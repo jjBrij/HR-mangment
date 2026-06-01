@@ -1,6 +1,6 @@
 // src/pages/Settings.jsx
 import React, { useState } from 'react';
-import { simulateApiCall } from '../data/dummyData';
+import { simulateApiCall } from '../services/dataService';
 import { FiSave, FiBell, FiGlobe, FiLock, FiUser } from 'react-icons/fi';
 
 const Settings = () => {

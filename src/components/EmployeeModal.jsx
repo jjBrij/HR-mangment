@@ -1,28 +1,75 @@
-// src/components/EmployeeModal.jsx
-import React from 'react';
-import { FiX, FiMail, FiPhone, FiCalendar, FiBriefcase, FiMapPin, FiUser, FiDownload, FiEdit2, FiFile, FiImage } from 'react-icons/fi';
+
+
+// employee view page apper after clicking on employee view button in employee list page. 
+// It will show all the details of employee in a modal.
+
+
+import React, { useState } from 'react';
+import { FiX, FiMail, FiPhone, FiCalendar, FiBriefcase,
+          FiMapPin, FiUser, FiDownload, FiEdit2, FiFile, 
+          FiImage } from 'react-icons/fi';
 
 const EmployeeModal = ({ employee, onClose, onEdit }) => {
+  const [activeTab, setActiveTab] = useState('basic');
+
   if (!employee) return null;
 
-  // Helper to format file name and get icon
+  // Helper to format file name
   const getFileIcon = (fileName) => {
-    if (!fileName) return <FiFile className="text-gray-500" />;
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return <FiImage className="text-green-500" />;
-    if (ext === 'pdf') return <FiFile className="text-red-500" />;
-    return <FiFile className="text-blue-500" />;
+    if (!fileName) return <FiFile />;
+    const ext = fileName.split('.').pop().toLowerCase();
+    if (['jpg', 'jpeg', 'png'].includes(ext)) return <FiImage />;
+    return <FiFile />;
   };
 
-  // Helper to display value or default message
-  const displayValue = (value, defaultValue = 'Not provided') => {
-    return value && value !== '' ? value : defaultValue;
-  };
+  // Render document section
+  const renderDocuments = () => {
+    const documents = [
+      { label: 'Aadhar Card', field: 'aadharCard' },
+      { label: 'PAN Card', field: 'panCard' },
+      { label: 'Passport Photo', field: 'passportPhoto' },
+      { label: 'Bank Passbook', field: 'bankPassbook' },
+      { label: '10th Marksheet', field: 'tenthMarksheet' },
+      { label: '12th Marksheet', field: 'twelfthMarksheet' },
+      { label: 'Graduation Marksheet', field: 'graduationMarksheet' },
+      { label: 'Post Graduation Marksheet', field: 'postGraduationMarksheet' },
+      { label: 'Previous Experience Certificate', field: 'previousExperienceCertificate' },
+      { label: 'Current Experience Letter', field: 'currentExperienceLetter' },
+      { label: 'Previous Salary Slip', field: 'previousSalarySlip' },
+      { label: 'Offer Letter', field: 'offerLetter' },
+      { label: 'Appointment Letter', field: 'appointmentLetter' },
+      { label: 'Resume', field: 'resume' },
+    ];
 
-  // Format currency
-  const formatCurrency = (amount) => {
-    if (!amount) return 'Not provided';
-    return `₹${Number(amount).toLocaleString()}`;
+    const uploadedDocs = documents.filter(doc => employee[doc.field]);
+    
+    if (uploadedDocs.length === 0) {
+      return <p className="text-gray-500 text-center py-8">No documents uploaded</p>;
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {uploadedDocs.map((doc, idx) => (
+          <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                {getFileIcon(employee[doc.field]?.name)}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700">{doc.label}</p>
+                <p className="text-xs text-gray-500">{employee[doc.field]?.name || 'Uploaded file'}</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => window.open(employee[doc.field]?.preview, '_blank')}
+              className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+            >
+              <FiDownload size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -30,10 +77,9 @@ const EmployeeModal = ({ employee, onClose, onEdit }) => {
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={onClose}></div>
 
-      {/* Modal Container */}
+      {/* Modal */}
       <div className="relative min-h-screen flex items-center justify-center p-4">
         <div className="relative bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-fade-in">
-          
           {/* Header */}
           <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
             <div className="flex items-center gap-3">
@@ -41,10 +87,8 @@ const EmployeeModal = ({ employee, onClose, onEdit }) => {
                 {employee.name?.charAt(0)}{employee.name?.split(' ')[1]?.charAt(0) || ''}
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-800">{employee.name || 'Unknown'}</h2>
-                <p className="text-sm text-gray-500">
-                  {employee.position || employee.designation || 'No position'} • {employee.department || 'No department'}
-                </p>
+                <h2 className="text-xl font-bold text-gray-800">{employee.name}</h2>
+                <p className="text-sm text-gray-500">{employee.position} • {employee.department}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -64,281 +108,129 @@ const EmployeeModal = ({ employee, onClose, onEdit }) => {
             </div>
           </div>
 
+          {/* Tabs */}
+          <div className="border-b border-gray-200 px-6">
+            <div className="flex gap-6 overflow-x-auto">
+              {[
+                { id: 'basic', label: 'Basic Info' },
+                { id: 'family', label: 'Family' },
+                { id: 'employment', label: 'Employment' },
+                { id: 'bank', label: 'Bank Details' },
+                { id: 'documents', label: 'Documents' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`py-3 px-1 border-b-2 transition font-medium text-sm ${
+                    activeTab === tab.id
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Content */}
-          <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 80px)' }}>
-            
-            {/* Basic Information Section */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
-                📋 Basic Information
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Employee ID</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.employeeId || employee.id)}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Full Name</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.name)}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Email Address</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <FiMail className="text-gray-400" />
-                    <p className="text-gray-800">{displayValue(employee.email)}</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Phone Number</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <FiPhone className="text-gray-400" />
-                    <p className="text-gray-800">{displayValue(employee.phone)}</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Date of Birth</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <FiCalendar className="text-gray-400" />
-                    <p className="text-gray-800">{displayValue(employee.dateOfBirth)}</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Gender</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.gender)}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Blood Group</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.bloodGroup)}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Marital Status</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.maritalStatus)}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Nationality</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.nationality, 'Indian')}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Family Information Section */}
-            {(employee.fatherName || employee.motherName || employee.spouseName) && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
-                  👨‍👩‍👧‍👦 Family Information
-                </h3>
+          <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+            {/* Basic Information Tab */}
+            {activeTab === 'basic' && (
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Father's Name</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.fatherName)}</p>
+                  <InfoItem icon={FiUser} label="Employee ID" value={employee.employeeId || employee.id} />
+                  <InfoItem icon={FiCalendar} label="Date of Birth" value={employee.dateOfBirth || 'Not provided'} />
+                  <InfoItem icon={FiUser} label="Gender" value={employee.gender || 'Not specified'} />
+                  <InfoItem icon={FiUser} label="Blood Group" value={employee.bloodGroup || 'Not specified'} />
+                  <InfoItem icon={FiUser} label="Marital Status" value={employee.maritalStatus || 'Not specified'} />
+                  <InfoItem icon={FiUser} label="Nationality" value={employee.nationality || 'Indian'} />
+                  <InfoItem icon={FiMail} label="Email" value={employee.email} />
+                  <InfoItem icon={FiPhone} label="Phone" value={employee.phone} />
+                </div>
+
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="font-semibold text-gray-800 mb-3">Address Information</h4>
+                  <div className="space-y-3">
+                    <InfoItem label="Current Address" value={employee.address || 'Not provided'} fullWidth />
+                    <InfoItem label="Permanent Address" value={employee.permanentAddress || 'Not provided'} fullWidth />
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Father's Contact</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.fatherContact)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Mother's Name</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.motherName)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Mother's Contact</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.motherContact)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Spouse Name</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.spouseName)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Spouse Contact</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.spouseContact)}</p>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="font-semibold text-gray-800 mb-3">Emergency Contact</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <InfoItem label="Contact Person" value={employee.emergencyContactName || 'Not provided'} />
+                    <InfoItem label="Relationship" value={employee.emergencyContactRelation || 'Not provided'} />
+                    <InfoItem label="Contact Number" value={employee.emergencyContactNumber || 'Not provided'} />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Address Information */}
-            {(employee.address || employee.permanentAddress) && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
-                  📍 Address Information
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Current Address</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.address)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Permanent Address</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.permanentAddress)}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Emergency Contact */}
-            {employee.emergencyContactName && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
-                  🚨 Emergency Contact
-                </h3>
+            {/* Family Information Tab */}
+            {activeTab === 'family' && (
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Contact Person</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.emergencyContactName)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Relationship</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.emergencyContactRelation)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Contact Number</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.emergencyContactNumber)}</p>
-                  </div>
+                  <InfoItem label="Father's Name" value={employee.fatherName || 'Not provided'} />
+                  <InfoItem label="Father's Contact" value={employee.fatherContact || 'Not provided'} />
+                  <InfoItem label="Mother's Name" value={employee.motherName || 'Not provided'} />
+                  <InfoItem label="Mother's Contact" value={employee.motherContact || 'Not provided'} />
+                  <InfoItem label="Spouse Name" value={employee.spouseName || 'Not provided'} />
+                  <InfoItem label="Spouse Contact" value={employee.spouseContact || 'Not provided'} />
                 </div>
               </div>
             )}
 
-            {/* Employment Information */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
-                💼 Employment Information
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Department</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <FiBriefcase className="text-gray-400" />
-                    <p className="text-gray-800">{displayValue(employee.department)}</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Designation</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.position || employee.designation)}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Work Location</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <FiMapPin className="text-gray-400" />
-                    <p className="text-gray-800">{displayValue(employee.workLocation)}</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Employment Type</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.employmentType, 'Full-time')}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Joining Date</label>
-                  <p className="mt-1 text-gray-800">{displayValue(employee.joinDate || employee.joiningDate)}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase">Status</label>
-                  <span className={`inline-flex mt-1 px-2 py-1 text-xs font-medium rounded-full ${
-                    employee.status === 'Active' ? 'bg-green-100 text-green-700' :
-                    employee.status === 'On Leave' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {displayValue(employee.status, 'Active')}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Salary Information */}
-            {(employee.currentSalary || employee.previousSalary) && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
-                  💰 Salary Information
-                </h3>
+            {/* Employment Information Tab */}
+            {activeTab === 'employment' && (
+              <div className="space-y-6">
+                <h4 className="font-semibold text-gray-800 mb-3">Current Employment</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Current Salary</label>
-                    <p className="mt-1 text-gray-800 font-semibold text-green-600">
-                      {formatCurrency(employee.currentSalary)}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Previous Salary</label>
-                    <p className="mt-1 text-gray-800">{formatCurrency(employee.previousSalary)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Previous Company</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.previousCompany)}</p>
+                  <InfoItem icon={FiBriefcase} label="Department" value={employee.department} />
+                  <InfoItem icon={FiBriefcase} label="Designation" value={employee.position || employee.designation} />
+                  <InfoItem icon={FiMapPin} label="Work Location" value={employee.workLocation || 'Not specified'} />
+                  <InfoItem label="Employment Type" value={employee.employmentType || 'Full-time'} />
+                  <InfoItem label="Joining Date" value={employee.joinDate || employee.joiningDate || 'Not specified'} />
+                  <InfoItem label="Current Salary" value={employee.currentSalary ? `₹${Number(employee.currentSalary).toLocaleString()}` : 'Not specified'} />
+                  <InfoItem label="Status" value={employee.status}>
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      employee.status === 'Active' ? 'bg-green-100 text-green-700' :
+                      employee.status === 'On Leave' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {employee.status}
+                    </span>
+                  </InfoItem>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="font-semibold text-gray-800 mb-3">Previous Employment</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <InfoItem label="Previous Company" value={employee.previousCompany || 'Not provided'} />
+                    <InfoItem label="Previous Salary" value={employee.previousSalary ? `₹${Number(employee.previousSalary).toLocaleString()}` : 'Not provided'} />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Bank Information */}
-            {(employee.bankName || employee.accountNumber) && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
-                  🏦 Bank Information
-                </h3>
+            {/* Bank Information Tab */}
+            {activeTab === 'bank' && (
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Bank Name</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.bankName)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">Account Number</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.accountNumber)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase">IFSC Code</label>
-                    <p className="mt-1 text-gray-800">{displayValue(employee.ifscCode)}</p>
-                  </div>
+                  <InfoItem label="Bank Name" value={employee.bankName || 'Not provided'} />
+                  <InfoItem label="Account Number" value={employee.accountNumber || 'Not provided'} />
+                  <InfoItem label="IFSC Code" value={employee.ifscCode || 'Not provided'} />
                 </div>
               </div>
             )}
 
-            {/* Documents Section - if any documents exist */}
-            {(() => {
-              const docFields = ['aadharCard', 'panCard', 'passportPhoto', 'bankPassbook', 'tenthMarksheet', 'twelfthMarksheet', 'graduationMarksheet', 'resume'];
-              const hasDocuments = docFields.some(field => employee[field]);
-              
-              if (hasDocuments) {
-                return (
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
-                      📎 Documents
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {docFields.map(field => {
-                        if (employee[field]) {
-                          return (
-                            <div key={field} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                              <div className="flex items-center gap-3">
-                                {getFileIcon(employee[field]?.name)}
-                                <div>
-                                  <p className="text-sm font-medium text-gray-700 capitalize">
-                                    {field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                                  </p>
-                                  <p className="text-xs text-gray-500">{employee[field]?.name || 'Uploaded file'}</p>
-                                </div>
-                              </div>
-                              {employee[field]?.preview && (
-                                <button 
-                                  onClick={() => window.open(employee[field]?.preview, '_blank')}
-                                  className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                                >
-                                  <FiDownload size={16} />
-                                </button>
-                              )}
-                            </div>
-                          );
-                        }
-                        return null;
-                      })}
-                    </div>
-                  </div>
-                );
-              }
-              return null;
-            })()}
+            {/* Documents Tab */}
+            {activeTab === 'documents' && renderDocuments()}
           </div>
 
           {/* Footer */}
-          <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+          <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end">
             <button
               onClick={onClose}
               className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
@@ -347,9 +239,8 @@ const EmployeeModal = ({ employee, onClose, onEdit }) => {
             </button>
             <button
               onClick={() => onEdit(employee)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2"
+              className="ml-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
             >
-              <FiEdit2 size={16} />
               Edit Employee
             </button>
           </div>
@@ -359,4 +250,16 @@ const EmployeeModal = ({ employee, onClose, onEdit }) => {
   );
 };
 
-export default EmployeeModal;
+// Helper component for info items
+const InfoItem = ({ icon: Icon, label, value, fullWidth, children }) => (
+  <div className={fullWidth ? 'col-span-full' : ''}>
+    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</label>
+    {children ? (
+      children
+    ) : (
+      <p className="mt-1 text-gray-800">{value || '—'}</p>
+    )}
+  </div>
+);
+
+export default EmployeeModal;   

@@ -1,73 +1,132 @@
-// src/components/Layout/Header.jsx
-import React, { useState } from 'react';
-import { FiBell, FiUser, FiChevronDown, FiSearch, FiSun } from 'react-icons/fi';
+
+import React, { useEffect, useState } from 'react';
+import {
+  FiMenu,
+  FiBell
+} from 'react-icons/fi';
+
 import SearchBar from '../Common/SearchBar';
 
-const Header = () => {
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  const currentDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const Header = ({
+  setSidebarOpen,
+  sidebarCollapsed,
+}) => {
+
+  // LIVE DATE & TIME
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+
+  }, []);
+
+  // FORMAT DATE
+  const formattedDate = currentTime.toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+  // FORMAT TIME
+  const formattedTime = currentTime.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
 
   return (
-    <header className="fixed right-0 top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm transition-all duration-200" style={{ left: '16rem' }}>
-      <div className="flex items-center justify-between px-6 py-3">
-        {/* Search Bar */}
-        <div className="flex-1 max-w-md">
-          <SearchBar />
+
+    <header
+      className={`
+        fixed top-0 right-0 z-30 h-auto
+        bg-white/90 backdrop-blur-md
+        border-b border-gray-200
+        transition-all duration-300
+
+        left-0
+        ${sidebarCollapsed ? 'lg:left-20' : 'lg:left-64'}
+      `}
+    >
+
+      <div className="h-20 px-3 sm:px-5 flex items-center justify-between gap-4">
+
+        {/* LEFT */}
+        <div className="flex items-center gap-3">
+
+          {/* MOBILE MENU */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden p-2 rounded-xl hover:bg-gray-100"
+          >
+            <FiMenu className="text-xl" />
+          </button>
+
+          {/* SEARCH */}
+          <div className="hidden md:block w-[300px]">
+            <SearchBar />
+          </div>
         </div>
 
-        {/* Right Section */}
+        {/* RIGHT */}
         <div className="flex items-center gap-3">
-          {/* Weather/Time Widget */}
-          <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 bg-gray-50 rounded-full">
-            <FiSun className="text-yellow-500" />
-            <span className="text-sm font-medium">40°C Sunny</span>
-            <div className="w-px h-4 bg-gray-300"></div>
-            <span className="text-sm text-gray-600">{currentTime}</span>
-            <span className="text-xs text-gray-400">{currentDate}</span>
+
+          {/* DATE & TIME */}
+          <div className="hidden md:flex flex-col items-end mr-2">
+            
+            <p className="text-sm font-semibold text-gray-800">
+              {formattedTime}
+            </p>
+
+            <p className="text-xs text-gray-500">
+              {formattedDate}
+            </p>
+
           </div>
 
-          {/* Language */}
-          <button className="px-2 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">
-            ENG
-          </button>
-
-          {/* Notifications */}
-          <button className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition">
+          {/* NOTIFICATION */}
+          <button className="relative p-2 rounded-xl hover:bg-gray-100">
             <FiBell className="text-lg" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+
+            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
           </button>
 
-          {/* Profile Menu */}
-          <div className="relative">
-            <button
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="flex items-center gap-2 p-1.5 hover:bg-gray-100 rounded-lg transition"
-            >
-              <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                BJ
-              </div>
-              <div className="hidden md:block text-left">
-                <p className="text-sm font-semibold text-gray-800">Brij K.</p>
-                <p className="text-xs text-gray-500">HR Manager</p>
-              </div>
-              <FiChevronDown className="text-gray-400 text-sm" />
-            </button>
+          {/* PROFILE */}
+          <div className="flex items-center gap-3">
 
-            {/* Dropdown Menu */}
-            {showProfileMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-2 animate-fade-in">
-                <button className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition">Profile</button>
-                <button className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition">Account Settings</button>
-                <hr className="my-1" />
-                <button className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition">Logout</button>
-              </div>
-            )}
+            <div className="hidden sm:block text-right">
+
+              <p className="text-sm font-semibold text-gray-800">
+                Brij K.
+              </p>
+
+              <p className="text-xs text-gray-500">
+                HR Manager
+              </p>
+
+            </div>
+
+            <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-semibold">
+              BK
+            </div>
+
           </div>
         </div>
       </div>
+
+      {/* MOBILE SEARCH */}
+      <div className="md:hidden px-3 pb-3">
+        <SearchBar />
+      </div>
+
     </header>
   );
 };
 
-export default React.memo(Header);
+export default Header;
+

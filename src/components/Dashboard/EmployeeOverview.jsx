@@ -1,14 +1,63 @@
 // src/components/Dashboard/EmployeeOverview.jsx
-import React from 'react';
-import { employeeOverview } from '../../data/dummyData';
-import { FiArrowUp, FiArrowDown } from 'react-icons/fi';
+import React, { useState, useEffect } from 'react';
+import { useAppContext } from '../../context/AppContext';
 
 const EmployeeOverview = () => {
+  const { employees, refreshTrigger } = useAppContext();
+  const [overview, setOverview] = useState({
+    newHires: 0,
+    departures: 0,
+    transfers: 0,
+    promotions: 0,
+    percentages: {}
+  });
+
+  useEffect(() => {
+    calculateOverview();
+  }, [employees, refreshTrigger]);
+
+  const calculateOverview = () => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    
+    // Calculate new hires this month
+    const newHires = employees.filter(emp => {
+      const joinDate = new Date(emp.joinDate);
+      return joinDate.getMonth() === currentMonth && joinDate.getFullYear() === currentYear;
+    }).length;
+    
+    // Calculate departures
+    const departures = employees.filter(emp => 
+      emp.status === 'Resigned' || emp.status === 'Terminated'
+    ).length;
+    
+    // Calculate promotions (employees with Senior/Lead in title)
+    const promotions = employees.filter(emp => 
+      emp.position?.includes('Senior') || emp.position?.includes('Lead') || emp.position?.includes('Manager')
+    ).length;
+    
+    // Transfers (simplified - can be enhanced with actual transfer tracking)
+    const transfers = 0;
+    
+    setOverview({
+      newHires: newHires,
+      departures: departures,
+      transfers: transfers,
+      promotions: promotions,
+      percentages: {
+        newHires: employees.length > 0 ? `+${Math.round((newHires / employees.length) * 100)}%` : '+0%',
+        departures: employees.length > 0 ? `-${Math.round((departures / employees.length) * 100)}%` : '-0%',
+        transfers: '+0%',
+        promotions: employees.length > 0 ? `+${Math.round((promotions / employees.length) * 100)}%` : '+0%'
+      }
+    });
+  };
+
   const metrics = [
-    { label: 'New Hires', value: employeeOverview.newHires, change: employeeOverview.percentages.newHires, trend: 'up' },
-    { label: 'Departures', value: employeeOverview.departures, change: employeeOverview.percentages.departures, trend: 'down' },
-    { label: 'Transfers', value: employeeOverview.transfers, change: employeeOverview.percentages.transfers, trend: 'up' },
-    { label: 'Promotions', value: employeeOverview.promotions, change: employeeOverview.percentages.promotions, trend: 'up' },
+    { label: 'New Hires', value: overview.newHires, change: overview.percentages?.newHires || '+0%', trend: 'up' },
+    { label: 'Departures', value: overview.departures, change: overview.percentages?.departures || '-0%', trend: 'down' },
+    { label: 'Transfers', value: overview.transfers, change: overview.percentages?.transfers || '+0%', trend: 'up' },
+    { label: 'Promotions', value: overview.promotions, change: overview.percentages?.promotions || '+0%', trend: 'up' },
   ];
 
   return (
@@ -22,27 +71,12 @@ const EmployeeOverview = () => {
         </select>
       </div>
 
-      {/* Chart Bars - Visual representation */}
-      <div className="flex items-end justify-between gap-2 mb-6 h-32">
-        {employeeOverview.chartData.map((value, idx) => (
-          <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-            <div 
-              className="w-full bg-gradient-to-t from-indigo-500 to-indigo-400 rounded-lg transition-all duration-500 hover:from-indigo-600"
-              style={{ height: `${Math.min(value / 3, 100)}px` }}
-            ></div>
-            <span className="text-xs text-gray-500">{value}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {metrics.map((metric, idx) => (
           <div key={idx} className="text-center p-3 bg-gray-50 rounded-xl">
             <p className="text-xs text-gray-500">{metric.label}</p>
             <p className="text-xl font-bold text-gray-800">{metric.value}</p>
             <span className={`inline-flex items-center gap-0.5 text-xs ${metric.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-              {metric.trend === 'up' ? <FiArrowUp size={12} /> : <FiArrowDown size={12} />}
               {metric.change}
             </span>
           </div>

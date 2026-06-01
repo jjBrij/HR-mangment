@@ -1,4 +1,4 @@
-// src/pages/Payroll.jsx
+// src/pages/Payroll.jsx - Updated with ₹ (Rupee) symbol
 import React, { useState, useEffect } from 'react';
 import { 
   FiDollarSign, 
@@ -15,7 +15,8 @@ import {
   FiSearch,
   FiSave,
   FiX,
-  FiEdit2
+  FiEdit2,
+  FiRefreshCw
 } from 'react-icons/fi';
 
 const Payroll = () => {
@@ -30,164 +31,159 @@ const Payroll = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [editingRow, setEditingRow] = useState(null);
   const [editFormData, setEditFormData] = useState({});
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Initialize and sync payroll data with employees
+  // Load data on mount and when refreshTrigger changes
   useEffect(() => {
     loadData();
+  }, [refreshTrigger]);
+
+  // Listen for storage changes (when employees are added/deleted from other tabs)
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'employees' || e.key === 'payrollData') {
+        loadData();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const loadData = () => {
-    // Load employees from localStorage
-    const storedEmployees = localStorage.getItem('employees');
-    let employeeList = [];
+  // Clean up orphaned payroll records (employees that no longer exist)
+  const cleanupOrphanedPayroll = (payrollList, employeeList) => {
+    if (!payrollList.length) return [];
     
-    if (storedEmployees && JSON.parse(storedEmployees).length > 0) {
-      employeeList = JSON.parse(storedEmployees);
-    } else {
-      // Default employees
-      employeeList = [
-        {
-          id: 1,
-          employeeId: 'EMP001',
-          name: 'John Smith',
-          email: 'john.smith@demo.com',
-          department: 'Engineering',
-          position: 'Senior Developer',
-          joinDate: '2022-01-15',
-          status: 'Active',
-          phone: '+1 234 567 8900',
-          basicSalary: 8000,
-          bankName: 'Chase Bank',
-          accountNumber: '1234567890',
-          ifscCode: 'CHAS0123456'
-        },
-        {
-          id: 2,
-          employeeId: 'EMP002',
-          name: 'Sarah Johnson',
-          email: 'sarah.j@demo.com',
-          department: 'Marketing',
-          position: 'Marketing Manager',
-          joinDate: '2021-08-20',
-          status: 'Active',
-          phone: '+1 234 567 8901',
-          basicSalary: 6500,
-          bankName: 'Bank of America',
-          accountNumber: '9876543210',
-          ifscCode: 'BOFA0123456'
-        },
-        {
-          id: 3,
-          employeeId: 'EMP003',
-          name: 'Michael Chen',
-          email: 'michael.chen@demo.com',
-          department: 'Sales',
-          position: 'Sales Representative',
-          joinDate: '2023-02-10',
-          status: 'Active',
-          phone: '+1 234 567 8902',
-          basicSalary: 5500,
-          bankName: 'Wells Fargo',
-          accountNumber: '5555555555',
-          ifscCode: 'WFIB0123456'
-        }
-      ];
-      localStorage.setItem('employees', JSON.stringify(employeeList));
+    if (employeeList.length === 0) {
+      // If no employees exist, clear all payroll records
+      localStorage.setItem('payrollData', JSON.stringify([]));
+      return [];
     }
     
-    setEmployees(employeeList);
+    const validEmployeeIds = employeeList.map(emp => emp.employeeId || emp.id);
+    const cleanedPayroll = payrollList.filter(payroll => 
+      payroll.employeeId && validEmployeeIds.includes(payroll.employeeId)
+    );
     
-    // Load payroll data or create from employees
-    const storedPayroll = localStorage.getItem('payrollData');
-    if (storedPayroll && JSON.parse(storedPayroll).length > 0) {
-      const parsedPayroll = JSON.parse(storedPayroll);
-      // Sync with latest employee data
-      const syncedPayroll = employeeList.map(emp => {
-        const existingPayroll = parsedPayroll.find(p => p.employeeId === emp.employeeId);
-        if (existingPayroll) {
-          return {
-            ...existingPayroll,
-            name: emp.name,
-            email: emp.email,
-            department: emp.department,
-            position: emp.position,
-            joinDate: emp.joinDate,
-            bankName: emp.bankName,
-            accountNumber: emp.accountNumber,
-            basicSalary: emp.basicSalary || existingPayroll.basicSalary
-          };
-        }
+    // Update employee names and departments to match current data
+    const updatedPayroll = cleanedPayroll.map(payroll => {
+      const matchingEmployee = employeeList.find(emp => (emp.employeeId || emp.id) === payroll.employeeId);
+      if (matchingEmployee) {
         return {
-          id: emp.id,
+          ...payroll,
+          name: matchingEmployee.name,
+          email: matchingEmployee.email,
+          department: matchingEmployee.department,
+          position: matchingEmployee.position,
+          basicSalary: matchingEmployee.basicSalary || payroll.basicSalary,
+          bankName: matchingEmployee.bankName || payroll.bankName,
+          accountNumber: matchingEmployee.accountNumber || payroll.accountNumber
+        };
+      }
+      return payroll;
+    });
+    
+    if (updatedPayroll.length !== payrollList.length) {
+      localStorage.setItem('payrollData', JSON.stringify(updatedPayroll));
+      console.log(`Cleaned up ${payrollList.length - updatedPayroll.length} orphaned payroll records`);
+    }
+    
+    return updatedPayroll;
+  };
+
+  // Sync payroll data with employees (create missing payroll records)
+  const syncPayrollWithEmployees = (employeeList, existingPayroll) => {
+    const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+    const syncedPayroll = [...existingPayroll];
+    
+    // Check for employees without payroll records
+    employeeList.forEach(emp => {
+      const hasPayroll = existingPayroll.some(p => p.employeeId === emp.employeeId);
+      if (!hasPayroll && emp.name && emp.name !== 'Unknown') {
+        // Create new payroll record for employee
+        const newPayroll = {
+          id: Date.now() + Math.random(),
           employeeId: emp.employeeId,
           name: emp.name,
           email: emp.email,
           department: emp.department,
           position: emp.position,
-          basicSalary: emp.basicSalary || 5000,
-          allowance: 1000,
+          basicSalary: parseFloat(emp.basicSalary) || 0,
+          allowance: 0,
           bonus: 0,
-          deductions: 500,
-          providentFund: 500,
-          professionalTax: 200,
-          incomeTax: 200,
-          netSalary: emp.basicSalary ? emp.basicSalary + 1000 - 500 : 5500,
+          deductions: 0,
+          providentFund: 0,
+          professionalTax: 0,
+          incomeTax: 0,
+          netSalary: parseFloat(emp.basicSalary) || 0,
           status: 'Unpaid',
           paymentDate: null,
           joinDate: emp.joinDate,
           bankName: emp.bankName,
           accountNumber: emp.accountNumber,
-          ifscCode: emp.ifscCode
+          ifscCode: emp.ifscCode,
+          month: currentMonth
         };
-      });
-      setPayrollData(syncedPayroll);
-      localStorage.setItem('payrollData', JSON.stringify(syncedPayroll));
-    } else {
-      // Create default payroll data from employees
-      const defaultPayroll = employeeList.map(emp => ({
-        id: emp.id,
-        employeeId: emp.employeeId,
-        name: emp.name,
-        email: emp.email,
-        department: emp.department,
-        position: emp.position,
-        basicSalary: emp.basicSalary || 5000,
-        allowance: 1000,
-        bonus: 0,
-        deductions: 500,
-        providentFund: 500,
-        professionalTax: 200,
-        incomeTax: 200,
-        netSalary: (emp.basicSalary || 5000) + 1000 - 500,
-        status: 'Unpaid',
-        paymentDate: null,
-        joinDate: emp.joinDate,
-        bankName: emp.bankName,
-        accountNumber: emp.accountNumber,
-        ifscCode: emp.ifscCode
-      }));
-      setPayrollData(defaultPayroll);
-      localStorage.setItem('payrollData', JSON.stringify(defaultPayroll));
+        syncedPayroll.push(newPayroll);
+        console.log(`Created payroll record for new employee: ${emp.name}`);
+      }
+    });
+    
+    return syncedPayroll;
+  };
+
+  const loadData = () => {
+    // Load employees from localStorage - NO DUMMY DATA
+    const storedEmployees = localStorage.getItem('employees');
+    let employeeList = [];
+    
+    if (storedEmployees && JSON.parse(storedEmployees).length > 0) {
+      employeeList = JSON.parse(storedEmployees);
+      // Filter out invalid employees
+      employeeList = employeeList.filter(emp => emp.name && emp.name.trim() !== '' && emp.name !== 'Unknown');
     }
+    // If no employees, keep empty array (no dummy data)
+    setEmployees(employeeList);
+    
+    // Load payroll data
+    let storedPayroll = localStorage.getItem('payrollData');
+    let payrollList = [];
+    
+    if (storedPayroll && JSON.parse(storedPayroll).length > 0) {
+      payrollList = JSON.parse(storedPayroll);
+    }
+    
+    // Clean up orphaned payroll records
+    const cleanedPayroll = cleanupOrphanedPayroll(payrollList, employeeList);
+    
+    // Sync payroll with current employees (create missing records)
+    const syncedPayroll = syncPayrollWithEmployees(employeeList, cleanedPayroll);
+    
+    // Save synced payroll back to localStorage if changes were made
+    if (syncedPayroll.length !== cleanedPayroll.length) {
+      localStorage.setItem('payrollData', JSON.stringify(syncedPayroll));
+    }
+    
+    setPayrollData(syncedPayroll);
   };
 
   // Calculate summary statistics
-  const totalPayroll = payrollData.reduce((sum, emp) => sum + emp.netSalary, 0);
+  const totalPayroll = payrollData.reduce((sum, emp) => sum + (emp.netSalary || 0), 0);
   const paidEmployees = payrollData.filter(emp => emp.status === 'Paid').length;
-  const unpaidEmployees = payrollData.filter(emp => emp.status === 'Unpaid' || emp.status === 'Pending').length;
+  const unpaidEmployees = payrollData.filter(emp => emp.status !== 'Paid').length;
   const pendingAmount = payrollData
     .filter(emp => emp.status !== 'Paid')
-    .reduce((sum, emp) => sum + emp.netSalary, 0);
+    .reduce((sum, emp) => sum + (emp.netSalary || 0), 0);
 
   // Filter employees based on search and status
   const filteredEmployees = payrollData.filter(emp => {
     const matchesSearch = 
-      emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.employeeId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.email?.toLowerCase().includes(searchTerm.toLowerCase());
+      (emp.name && emp.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (emp.employeeId && emp.employeeId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (emp.department && emp.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (emp.email && emp.email.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    const matchesStatus = filterStatus === 'all' || emp.status?.toLowerCase() === filterStatus.toLowerCase();
+    const matchesStatus = filterStatus === 'all' || (emp.status && emp.status.toLowerCase() === filterStatus.toLowerCase());
     
     return matchesSearch && matchesStatus;
   });
@@ -204,16 +200,19 @@ const Payroll = () => {
   const startEditing = (employee) => {
     setEditingRow(employee.id);
     setEditFormData({
-      bonus: employee.bonus,
-      deductions: employee.deductions,
-      status: employee.status
+      bonus: employee.bonus || 0,
+      deductions: employee.deductions || 0,
+      status: employee.status || 'Unpaid'
     });
   };
 
   // Handle edit input changes
   const handleEditChange = (e) => {
     const { name, value } = e.target;
-    setEditFormData(prev => ({ ...prev, [name]: name === 'bonus' || name === 'deductions' ? parseFloat(value) || 0 : value }));
+    setEditFormData(prev => ({ 
+      ...prev, 
+      [name]: name === 'bonus' || name === 'deductions' ? parseFloat(value) || 0 : value 
+    }));
   };
 
   // Save edited row
@@ -228,7 +227,7 @@ const Payroll = () => {
           bonus: editFormData.bonus,
           deductions: editFormData.deductions,
           status: editFormData.status,
-          netSalary: emp.basicSalary + emp.allowance + editFormData.bonus - editFormData.deductions
+          netSalary: (emp.basicSalary || 0) + (emp.allowance || 0) + editFormData.bonus - editFormData.deductions
         };
         if (editFormData.status === 'Paid' && emp.status !== 'Paid') {
           updatedEmp.paymentDate = new Date().toISOString().split('T')[0];
@@ -245,6 +244,7 @@ const Payroll = () => {
     setEditingRow(null);
     setLoading(false);
     alert('Payroll details updated successfully!');
+    setRefreshTrigger(prev => prev + 1);
   };
 
   // Cancel editing
@@ -260,7 +260,11 @@ const Payroll = () => {
     
     const updatedPayroll = payrollData.map(emp =>
       emp.id === id 
-        ? { ...emp, status: newStatus, paymentDate: newStatus === 'Paid' ? new Date().toISOString().split('T')[0] : null }
+        ? { 
+            ...emp, 
+            status: newStatus, 
+            paymentDate: newStatus === 'Paid' ? new Date().toISOString().split('T')[0] : null 
+          }
         : emp
     );
     
@@ -268,12 +272,13 @@ const Payroll = () => {
     localStorage.setItem('payrollData', JSON.stringify(updatedPayroll));
     setLoading(false);
     alert(`Payment ${newStatus === 'Paid' ? 'processed' : 'updated'} successfully!`);
+    setRefreshTrigger(prev => prev + 1);
   };
 
   // Handle bulk action
   const handleBulkAction = async (action) => {
     if (action === 'payAll') {
-      if (window.confirm('Process all pending payments?')) {
+      if (window.confirm('Process all unpaid payments?')) {
         setLoading(true);
         await new Promise(resolve => setTimeout(resolve, 1000));
         
@@ -286,26 +291,35 @@ const Payroll = () => {
         setPayrollData(updatedPayroll);
         localStorage.setItem('payrollData', JSON.stringify(updatedPayroll));
         setLoading(false);
-        alert('All pending payments processed successfully!');
+        alert('All unpaid payments processed successfully!');
+        setRefreshTrigger(prev => prev + 1);
       }
     } else if (action === 'export') {
       exportToCSV();
+    } else if (action === 'refresh') {
+      loadData();
+      alert('Payroll data refreshed!');
     }
   };
 
   // Export to CSV
   const exportToCSV = () => {
+    if (payrollData.length === 0) {
+      alert('No payroll data to export');
+      return;
+    }
+    
     const headers = ['Employee ID', 'Name', 'Email', 'Department', 'Basic Salary', 'Bonus', 'Deductions', 'Net Salary', 'Status', 'Payment Date'];
     const csvData = payrollData.map(emp => [
-      emp.employeeId,
-      emp.name,
-      emp.email,
-      emp.department,
-      emp.basicSalary,
-      emp.bonus,
-      emp.deductions,
-      emp.netSalary,
-      emp.status,
+      emp.employeeId || '',
+      emp.name || '',
+      emp.email || '',
+      emp.department || '',
+      emp.basicSalary || 0,
+      emp.bonus || 0,
+      emp.deductions || 0,
+      emp.netSalary || 0,
+      emp.status || 'Unpaid',
       emp.paymentDate || 'N/A'
     ]);
     
@@ -370,14 +384,14 @@ const Payroll = () => {
             <p><strong>Payment Date:</strong> ${employee.paymentDate || 'N/A'}</p>
           </div>
           <table>
-            <tr><th>Description</th><th>Amount (USD)</th></tr>
-            <tr><td>Basic Salary</td><td>$${employee.basicSalary.toFixed(2)}</td></tr>
-            <tr><td>Allowance</td><td>+$${employee.allowance.toFixed(2)}</td></tr>
-            <tr><td>Bonus</td><td>+$${employee.bonus.toFixed(2)}</td></tr>
-            <tr><td>Provident Fund</td><td>-$${employee.providentFund.toFixed(2)}</td></tr>
-            <tr><td>Professional Tax</td><td>-$${employee.professionalTax.toFixed(2)}</td></tr>
-            <tr><td>Income Tax</td><td>-$${employee.incomeTax.toFixed(2)}</td></tr>
-            <tr class="total"><td>Net Salary</td><td>$${employee.netSalary.toFixed(2)}</td></tr>
+            <tr><th>Description</th><th>Amount (₹)</th></tr>
+            <tr><td>Basic Salary</td><td>₹${(employee.basicSalary || 0).toLocaleString('en-IN')}</td></tr>
+            <tr><td>Allowance</td><td class="text-green-600">+₹${(employee.allowance || 0).toLocaleString('en-IN')}</td></tr>
+            <tr><td>Bonus</td><td class="text-green-600">+₹${(employee.bonus || 0).toLocaleString('en-IN')}</td></tr>
+            <tr><td>Provident Fund</td><td class="text-red-600">-₹${(employee.providentFund || 0).toLocaleString('en-IN')}</td></tr>
+            <tr><td>Professional Tax</td><td class="text-red-600">-₹${(employee.professionalTax || 0).toLocaleString('en-IN')}</td></tr>
+            <tr><td>Income Tax</td><td class="text-red-600">-₹${(employee.incomeTax || 0).toLocaleString('en-IN')}</td></tr>
+            <tr class="total"><td>Net Salary</td><td>₹${(employee.netSalary || 0).toLocaleString('en-IN')}</td></tr>
           </table>
           <p style="margin-top: 30px; text-align: center;">This is a computer-generated document. No signature required.</p>
         </body>
@@ -387,10 +401,19 @@ const Payroll = () => {
     printWindow.print();
   };
 
-  // Format account number to show full number
+  // Format account number
   const formatAccountNumber = (accountNumber) => {
     if (!accountNumber) return 'Not provided';
+    if (accountNumber.length > 8) {
+      return `****${accountNumber.slice(-4)}`;
+    }
     return accountNumber;
+  };
+
+  // Format currency in Indian Rupees
+  const formatCurrency = (amount) => {
+    if (!amount) return '₹0';
+    return `₹${amount.toLocaleString('en-IN')}`;
   };
 
   return (
@@ -399,6 +422,9 @@ const Payroll = () => {
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Payroll Management</h1>
         <p className="text-gray-500 mt-1">Manage and process employee payroll efficiently</p>
+        {employees.length === 0 && (
+          <p className="text-sm text-amber-600 mt-2">⚠️ No employees found. Please add employees first.</p>
+        )}
       </div>
 
       {/* Statistics Cards */}
@@ -407,7 +433,7 @@ const Payroll = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Total Payroll</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">${totalPayroll.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-gray-800 mt-1">{formatCurrency(totalPayroll)}</p>
               <p className="text-xs text-green-600 mt-2">Current month</p>
             </div>
             <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -421,7 +447,7 @@ const Payroll = () => {
             <div>
               <p className="text-sm text-gray-500 font-medium">Paid Employees</p>
               <p className="text-2xl font-bold text-gray-800 mt-1">{paidEmployees}</p>
-              <p className="text-xs text-green-600 mt-2">{Math.round((paidEmployees / payrollData.length) * 100)}% of total employees</p>
+              <p className="text-xs text-green-600 mt-2">{payrollData.length > 0 ? Math.round((paidEmployees / payrollData.length) * 100) : 0}% of total</p>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
               <FiCheckCircle className="text-green-600 text-xl" />
@@ -434,7 +460,7 @@ const Payroll = () => {
             <div>
               <p className="text-sm text-gray-500 font-medium">Pending Payments</p>
               <p className="text-2xl font-bold text-gray-800 mt-1">{unpaidEmployees}</p>
-              <p className="text-xs text-orange-600 mt-2">${pendingAmount.toLocaleString()} pending</p>
+              <p className="text-xs text-orange-600 mt-2">{formatCurrency(pendingAmount)} pending</p>
             </div>
             <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
               <FiClock className="text-orange-600 text-xl" />
@@ -448,15 +474,23 @@ const Payroll = () => {
         <div className="flex gap-3">
           <button
             onClick={() => handleBulkAction('payAll')}
-            disabled={loading}
+            disabled={loading || payrollData.length === 0}
             className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-md text-sm flex items-center gap-2 disabled:opacity-50"
           >
             <FiDollarSign size={16} />
             Process All Unpaid
           </button>
           <button
-            onClick={() => handleBulkAction('export')}
+            onClick={() => handleBulkAction('refresh')}
             className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition text-sm flex items-center gap-2"
+          >
+            <FiRefreshCw size={16} />
+            Refresh
+          </button>
+          <button
+            onClick={() => handleBulkAction('export')}
+            disabled={payrollData.length === 0}
+            className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition text-sm flex items-center gap-2 disabled:opacity-50"
           >
             <FiDownload size={16} />
             Export Report
@@ -469,7 +503,7 @@ const Payroll = () => {
             <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by name, ID, department, email..."
+              placeholder="Search by name, ID, department..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 text-sm w-64"
@@ -489,195 +523,231 @@ const Payroll = () => {
       </div>
 
       {/* Payroll Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Employee ID</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Name / Email</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Department</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Bank Account</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Basic Salary</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Bonus</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Deductions</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Net Pay</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {currentItems.map((employee) => (
-                <tr key={employee.id} className="hover:bg-gray-50 transition group">
-                  <td className="px-4 py-3">
-                    <span className="text-sm font-mono text-gray-600">{employee.employeeId}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="font-medium text-gray-800">{employee.name}</p>
-                      <p className="text-xs text-gray-500">{employee.email}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Joined: {employee.joinDate}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <FiBriefcase className="text-gray-400 text-sm" />
-                      <span className="text-sm text-gray-700">{employee.department}</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{employee.position}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sm text-gray-700">{employee.bankName || 'N/A'}</span>
-                    <p className="text-xs font-mono text-gray-500">{formatAccountNumber(employee.accountNumber)}</p>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-sm text-gray-700">${employee.basicSalary?.toLocaleString()}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {editingRow === employee.id ? (
-                      <input
-                        type="number"
-                        name="bonus"
-                        value={editFormData.bonus}
-                        onChange={handleEditChange}
-                        className="w-24 px-2 py-1 text-right border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-400"
-                      />
-                    ) : (
-                      <span className="text-sm text-green-600">+${employee.bonus?.toLocaleString()}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {editingRow === employee.id ? (
-                      <input
-                        type="number"
-                        name="deductions"
-                        value={editFormData.deductions}
-                        onChange={handleEditChange}
-                        className="w-24 px-2 py-1 text-right border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-400"
-                      />
-                    ) : (
-                      <span className="text-sm text-red-600">-${employee.deductions?.toLocaleString()}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="font-semibold text-gray-800">${employee.netSalary?.toLocaleString()}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {editingRow === employee.id ? (
-                      <select
-                        name="status"
-                        value={editFormData.status}
-                        onChange={handleEditChange}
-                        className="px-2 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400"
-                      >
-                        <option value="Unpaid">Unpaid</option>
-                        <option value="Pending">Pending</option>
-                        <option value="Paid">Paid</option>
-                      </select>
-                    ) : (
-                      <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                        employee.status === 'Paid' 
-                          ? 'bg-green-100 text-green-700' 
-                          : employee.status === 'Pending'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {employee.status === 'Paid' ? <FiCheckCircle className="mr-1 text-xs" /> : <FiClock className="mr-1 text-xs" />}
-                        {employee.status || 'Unpaid'}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">
-                      {editingRow === employee.id ? (
-                        <>
-                          <button
-                            onClick={() => saveEdit(employee.id)}
-                            disabled={loading}
-                            className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
-                            title="Save"
-                          >
-                            <FiSave size={16} />
-                          </button>
-                          <button
-                            onClick={cancelEditing}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
-                            title="Cancel"
-                          >
-                            <FiX size={16} />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => startEditing(employee)}
-                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                            title="Edit"
-                          >
-                            <FiEdit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => viewSalaryBreakdown(employee)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                            title="View Details"
-                          >
-                            <FiEye size={16} />
-                          </button>
-                          {employee.status !== 'Paid' && (
-                            <button
-                              onClick={() => handleUpdateStatus(employee.id, 'Paid')}
-                              disabled={loading}
-                              className="px-2 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50"
-                            >
-                              Pay Now
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </td>
+      {payrollData.length === 0 ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FiDollarSign className="text-gray-400 text-3xl" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-800 mb-2">No Payroll Data</h3>
+          <p className="text-gray-500 mb-4">No employees found. Add employees to see payroll data.</p>
+          <button
+            onClick={() => window.location.href = '/employees/add'}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition text-sm"
+          >
+            Add Employee
+          </button>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Employee ID</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Name / Email</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Department</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Bank Account</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Basic Salary</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Bonus</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Deductions</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Net Pay</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {currentItems.map((employee) => (
+                  <tr key={employee.id} className="hover:bg-gray-50 transition group">
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-mono text-gray-600">{employee.employeeId}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="font-medium text-gray-800">{employee.name}</p>
+                        <p className="text-xs text-gray-500">{employee.email}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">Joined: {employee.joinDate}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <FiBriefcase className="text-gray-400 text-sm" />
+                        <span className="text-sm text-gray-700">{employee.department}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">{employee.position}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-700">{employee.bankName || 'N/A'}</span>
+                      <p className="text-xs font-mono text-gray-500">{formatAccountNumber(employee.accountNumber)}</p>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm text-gray-700">{formatCurrency(employee.basicSalary)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {editingRow === employee.id ? (
+                        <input
+                          type="number"
+                          name="bonus"
+                          value={editFormData.bonus}
+                          onChange={handleEditChange}
+                          className="w-24 px-2 py-1 text-right border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-400"
+                          min="0"
+                        />
+                      ) : (
+                        <span className="text-sm text-green-600">+{formatCurrency(employee.bonus)}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {editingRow === employee.id ? (
+                        <input
+                          type="number"
+                          name="deductions"
+                          value={editFormData.deductions}
+                          onChange={handleEditChange}
+                          className="w-24 px-2 py-1 text-right border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-400"
+                          min="0"
+                        />
+                      ) : (
+                        <span className="text-sm text-red-600">-{formatCurrency(employee.deductions)}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="font-semibold text-gray-800">{formatCurrency(employee.netSalary)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {editingRow === employee.id ? (
+                        <select
+                          name="status"
+                          value={editFormData.status}
+                          onChange={handleEditChange}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-400"
+                        >
+                          <option value="Unpaid">Unpaid</option>
+                          <option value="Pending">Pending</option>
+                          <option value="Paid">Paid</option>
+                        </select>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                          employee.status === 'Paid' 
+                            ? 'bg-green-100 text-green-700' 
+                            : employee.status === 'Pending'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {employee.status === 'Paid' ? <FiCheckCircle className="mr-1 text-xs" /> : <FiClock className="mr-1 text-xs" />}
+                          {employee.status || 'Unpaid'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        {editingRow === employee.id ? (
+                          <>
+                            <button
+                              onClick={() => saveEdit(employee.id)}
+                              disabled={loading}
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
+                              title="Save"
+                            >
+                              <FiSave size={16} />
+                            </button>
+                            <button
+                              onClick={cancelEditing}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
+                              title="Cancel"
+                            >
+                              <FiX size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startEditing(employee)}
+                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                              title="Edit Bonus/Deductions"
+                            >
+                              <FiEdit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => viewSalaryBreakdown(employee)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                              title="View Details"
+                            >
+                              <FiEye size={16} />
+                            </button>
+                            {employee.status !== 'Paid' && (
+                              <button
+                                onClick={() => handleUpdateStatus(employee.id, 'Paid')}
+                                disabled={loading}
+                                className="px-2 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                              >
+                                Pay Now
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-        {/* Pagination */}
-        <div className="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="text-sm text-gray-500">
-            Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredEmployees.length)} of {filteredEmployees.length} entries
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => paginate(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            >
-              <FiChevronLeft size={16} />
-            </button>
-            {[...Array(totalPages)].map((_, index) => (
-              <button
-                key={index}
-                onClick={() => paginate(index + 1)}
-                className={`px-3 py-1 rounded-lg transition ${
-                  currentPage === index + 1
-                    ? 'bg-indigo-600 text-white'
-                    : 'border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                {index + 1}
-              </button>
-            ))}
-            <button
-              onClick={() => paginate(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            >
-              <FiChevronRight size={16} />
-            </button>
-          </div>
+          {/* Pagination */}
+          {filteredEmployees.length > 0 && (
+            <div className="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="text-sm text-gray-500">
+                Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredEmployees.length)} of {filteredEmployees.length} entries
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => paginate(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  <FiChevronLeft size={16} />
+                </button>
+                {[...Array(Math.min(totalPages, 7))].map((_, index) => {
+                  let pageNumber;
+                  if (totalPages <= 7) {
+                    pageNumber = index + 1;
+                  } else if (currentPage <= 4) {
+                    pageNumber = index + 1;
+                  } else if (currentPage >= totalPages - 3) {
+                    pageNumber = totalPages - 6 + index;
+                  } else {
+                    pageNumber = currentPage - 3 + index;
+                  }
+                  
+                  if (pageNumber >= 1 && pageNumber <= totalPages) {
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => paginate(pageNumber)}
+                        className={`px-3 py-1 rounded-lg transition ${
+                          currentPage === pageNumber
+                            ? 'bg-indigo-600 text-white'
+                            : 'border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNumber}
+                      </button>
+                    );
+                  }
+                  return null;
+                })}
+                <button
+                  onClick={() => paginate(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  <FiChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Salary Breakdown Modal */}
       {showSalaryBreakdown && selectedEmployee && (
@@ -708,15 +778,15 @@ const Payroll = () => {
                       <div className="space-y-3">
                         <div className="flex justify-between py-2 border-b border-gray-100">
                           <span className="text-gray-600">Basic Salary</span>
-                          <span className="font-semibold text-gray-800">${selectedEmployee.basicSalary?.toLocaleString()}</span>
+                          <span className="font-semibold text-gray-800">{formatCurrency(selectedEmployee.basicSalary)}</span>
                         </div>
                         <div className="flex justify-between py-2 border-b border-gray-100">
                           <span className="text-gray-600">Allowance</span>
-                          <span className="text-green-600">+${selectedEmployee.allowance?.toLocaleString()}</span>
+                          <span className="text-green-600">+{formatCurrency(selectedEmployee.allowance)}</span>
                         </div>
                         <div className="flex justify-between py-2 border-b border-gray-100">
                           <span className="text-gray-600">Bonus</span>
-                          <span className="text-green-600">+${selectedEmployee.bonus?.toLocaleString()}</span>
+                          <span className="text-green-600">+{formatCurrency(selectedEmployee.bonus)}</span>
                         </div>
                       </div>
                     </div>
@@ -726,15 +796,15 @@ const Payroll = () => {
                       <div className="space-y-3">
                         <div className="flex justify-between py-2 border-b border-gray-100">
                           <span className="text-gray-600">Provident Fund</span>
-                          <span className="text-red-600">-${selectedEmployee.providentFund?.toLocaleString()}</span>
+                          <span className="text-red-600">-{formatCurrency(selectedEmployee.providentFund)}</span>
                         </div>
                         <div className="flex justify-between py-2 border-b border-gray-100">
                           <span className="text-gray-600">Professional Tax</span>
-                          <span className="text-red-600">-${selectedEmployee.professionalTax?.toLocaleString()}</span>
+                          <span className="text-red-600">-{formatCurrency(selectedEmployee.professionalTax)}</span>
                         </div>
                         <div className="flex justify-between py-2 border-b border-gray-100">
                           <span className="text-gray-600">Income Tax</span>
-                          <span className="text-red-600">-${selectedEmployee.incomeTax?.toLocaleString()}</span>
+                          <span className="text-red-600">-{formatCurrency(selectedEmployee.incomeTax)}</span>
                         </div>
                       </div>
                     </div>
@@ -742,7 +812,7 @@ const Payroll = () => {
                     <div className="pt-4 border-t-2 border-gray-200">
                       <div className="flex justify-between py-2">
                         <span className="text-lg font-bold text-gray-800">Net Salary</span>
-                        <span className="text-2xl font-bold text-indigo-600">${selectedEmployee.netSalary?.toLocaleString()}</span>
+                        <span className="text-2xl font-bold text-indigo-600">{formatCurrency(selectedEmployee.netSalary)}</span>
                       </div>
                     </div>
                   </div>

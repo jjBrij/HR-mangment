@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiFilter, FiEye, FiEdit2, FiTrash2, FiUserPlus } from 'react-icons/fi';
 import EmployeeModal from '../components/EmployeeModal';
-import { simulateApiCall } from '../data/dummyData';
+import { simulateApiCall } from '../services/dataService';
 
 const Employees = () => {
   const navigate = useNavigate();
@@ -56,7 +56,7 @@ const Employees = () => {
   const handleView = (employee) => {
     setSelectedEmployee(employee);
     setShowModal(true);
-  };
+  };  
 
   // Edit employee - navigate to edit page with employee data
   const handleEdit = (employee) => {

@@ -1,10 +1,109 @@
-// src/pages/AddEmployee.jsx
-import React, { useState, useEffect } from 'react';
+// src/pages/AddEmployee.jsx (Completely Fixed - No Focus Issues)
+import React, { useState, useCallback, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiSave, FiX, FiUpload, FiFile, FiImage, FiTrash2 } from 'react-icons/fi';
+import { FiArrowLeft, FiSave, FiX, FiUpload, FiFile, FiTrash2 } from 'react-icons/fi';
+import { useAppContext } from '../context/AppContext';
+
+// Move components outside to prevent recreation on each render
+const InputField = memo(({ label, name, type = "text", required, placeholder, value, error, onChange }) => (
+  <div className="form-group">
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <input
+      type={type}
+      name={name}
+      value={value || ''}
+      onChange={onChange}
+      placeholder={placeholder}
+      className={`w-full px-4 py-2.5 border ${error ? 'border-red-500' : 'border-gray-200'} rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition`}
+    />
+    {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+  </div>
+));
+
+const SelectField = memo(({ label, name, options, required, value, onChange }) => (
+  <div className="form-group">
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <select
+      name={name}
+      value={value || ''}
+      onChange={onChange}
+      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white"
+    >
+      {options.map(option => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+  </div>
+));
+
+const TextAreaField = memo(({ label, name, rows = 3, placeholder, value, onChange }) => (
+  <div className="form-group">
+    <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+    <textarea
+      name={name}
+      rows={rows}
+      value={value || ''}
+      onChange={onChange}
+      placeholder={placeholder}
+      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 resize-none"
+    />
+  </div>
+));
+
+const FileUploadField = memo(({ label, fieldName, uploadedFile, onFileUpload, onFileRemove, accept = ".pdf,.jpg,.jpeg,.png" }) => (
+  <div className="file-upload-field">
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      {label}
+    </label>
+    {uploadedFile ? (
+      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex items-center gap-3">
+          {uploadedFile.type?.startsWith('image/') ? (
+            <img src={uploadedFile.preview} alt="preview" className="w-10 h-10 object-cover rounded" />
+          ) : (
+            <FiFile className="text-indigo-500 text-2xl" />
+          )}
+          <div>
+            <p className="text-sm font-medium text-gray-700">{uploadedFile.name}</p>
+            <p className="text-xs text-gray-500">
+              {Math.round((uploadedFile.preview?.length || 0) / 1024)} KB
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onFileRemove(fieldName)}
+          className="text-red-500 hover:text-red-700 transition"
+        >
+          <FiTrash2 size={18} />
+        </button>
+      </div>
+    ) : (
+      <label className="cursor-pointer block">
+        <input
+          type="file"
+          accept={accept}
+          onChange={(e) => onFileUpload(e, fieldName)}
+          className="hidden"
+        />
+        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-indigo-500 transition cursor-pointer">
+          <FiUpload className="mx-auto text-gray-400 text-2xl mb-2" />
+          <p className="text-sm text-gray-500">Click to upload or drag and drop</p>
+          <p className="text-xs text-gray-400 mt-1">PNG, JPG, PDF (Max 5MB)</p>
+        </div>
+      </label>
+    )}
+  </div>
+));
 
 const AddEmployee = () => {
   const navigate = useNavigate();
+  const { refreshData } = useAppContext();
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     // Basic Information
     employeeId: '',
@@ -76,16 +175,20 @@ const AddEmployee = () => {
   });
 
   const [uploadedFiles, setUploadedFiles] = useState({});
-  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  // Handle text input changes
-  const handleChange = (e) => {
+  // Handle text input changes - use useCallback to prevent recreation
+  const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-  };
+    // Clear error for this field
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  }, [errors]);
 
-  // Handle file upload (supports PNG, JPG, PDF)
-  const handleFileUpload = (e, fieldName) => {
+  // Handle file upload
+  const handleFileUpload = useCallback((e, fieldName) => {
     const file = e.target.files[0];
     if (file) {
       // Validate file type
@@ -114,186 +217,309 @@ const AddEmployee = () => {
       // Store file in formData
       setFormData(prev => ({ ...prev, [fieldName]: file }));
     }
-  };
+  }, []);
 
   // Remove uploaded file
-  const removeFile = (fieldName) => {
+  const handleRemoveFile = useCallback((fieldName) => {
     setFormData(prev => ({ ...prev, [fieldName]: null }));
     setUploadedFiles(prev => {
       const newState = { ...prev };
       delete newState[fieldName];
       return newState;
     });
-  };
+  }, []);
+
+  // Validate form before submission
+  const validateForm = useCallback(() => {
+    const newErrors = {};
+    
+    if (!formData.fullName?.trim()) newErrors.fullName = 'Full name is required';
+    if (!formData.email?.trim()) newErrors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Email is invalid';
+    if (!formData.employeeId?.trim()) newErrors.employeeId = 'Employee ID is required';
+    if (!formData.phone?.trim()) newErrors.phone = 'Phone number is required';
+    if (!formData.department) newErrors.department = 'Department is required';
+    if (!formData.designation?.trim()) newErrors.designation = 'Designation is required';
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [formData]);
 
   // Handle form submission
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     
-    // Validate required fields
-    if (!formData.fullName || !formData.email || !formData.employeeId || !formData.phone) {
-      alert('Please fill in all required fields: Full Name, Email, Employee ID, and Phone Number');
+    if (!validateForm()) {
+      alert('Please fix the errors before submitting');
       return;
     }
     
     setLoading(true);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Create employee object
+    // Create employee object for saving
     const employeeToSave = {
       id: Date.now(),
+      employeeId: formData.employeeId,
       name: formData.fullName,
       email: formData.email,
+      phone: formData.phone,
       department: formData.department,
-      position: formData.designation || 'Staff',
+      position: formData.designation,
+      designation: formData.designation,
       joinDate: formData.joiningDate || new Date().toISOString().split('T')[0],
       status: formData.status,
-      phone: formData.phone,
-      ...formData,
-      // Store file info for demo (in real app, you'd upload to server)
+      dateOfBirth: formData.dateOfBirth,
+      gender: formData.gender,
+      bloodGroup: formData.bloodGroup,
+      maritalStatus: formData.maritalStatus,
+      nationality: formData.nationality,
+      address: formData.address,
+      permanentAddress: formData.permanentAddress,
+      fatherName: formData.fatherName,
+      fatherContact: formData.fatherContact,
+      motherName: formData.motherName,
+      motherContact: formData.motherContact,
+      spouseName: formData.spouseName,
+      spouseContact: formData.spouseContact,
+      emergencyContactName: formData.emergencyContactName,
+      emergencyContactRelation: formData.emergencyContactRelation,
+      emergencyContactNumber: formData.emergencyContactNumber,
+      workLocation: formData.workLocation,
+      employmentType: formData.employmentType,
+      basicSalary: formData.currentSalary,
+      currentSalary: formData.currentSalary,
+      previousCompany: formData.previousCompany,
+      previousSalary: formData.previousSalary,
+      bankName: formData.bankName,
+      accountNumber: formData.accountNumber,
+      ifscCode: formData.ifscCode,
+      bankPassbook: formData.bankPassbook ? formData.bankPassbook.name : null,
+      aadharCard: formData.aadharCard ? formData.aadharCard.name : null,
+      panCard: formData.panCard ? formData.panCard.name : null,
+      passportPhoto: formData.passportPhoto ? formData.passportPhoto.name : null,
+      tenthMarksheet: formData.tenthMarksheet ? formData.tenthMarksheet.name : null,
+      twelfthMarksheet: formData.twelfthMarksheet ? formData.twelfthMarksheet.name : null,
+      graduationMarksheet: formData.graduationMarksheet ? formData.graduationMarksheet.name : null,
+      postGraduationMarksheet: formData.postGraduationMarksheet ? formData.postGraduationMarksheet.name : null,
+      resume: formData.resume ? formData.resume.name : null,
+      previousSalarySlip: formData.previousSalarySlip ? formData.previousSalarySlip.name : null,
+      previousExperienceCertificate: formData.previousExperienceCertificate ? formData.previousExperienceCertificate.name : null,
+      currentExperienceLetter: formData.currentExperienceLetter ? formData.currentExperienceLetter.name : null,
+      offerLetter: formData.offerLetter ? formData.offerLetter.name : null,
+      appointmentLetter: formData.appointmentLetter ? formData.appointmentLetter.name : null,
+      createdAt: new Date().toISOString(),
       documents: Object.keys(uploadedFiles).map(key => uploadedFiles[key].name)
     };
     
-    // Get existing employees from localStorage or initialize empty array
-    const existingEmployees = JSON.parse(localStorage.getItem('employees') || '[]');
-    existingEmployees.push(employeeToSave);
-    localStorage.setItem('employees', JSON.stringify(existingEmployees));
-    
-    setLoading(false);
-    alert('Employee added successfully!');
-    
-    // Navigate back to employees page
-    navigate('/employees');
-  };
+    try {
+      // Get existing employees
+      const existingEmployees = JSON.parse(localStorage.getItem('employees') || '[]');
+      existingEmployees.push(employeeToSave);
+      localStorage.setItem('employees', JSON.stringify(existingEmployees));
+      
+      // Also update payroll data for this employee
+      const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+      const existingPayroll = JSON.parse(localStorage.getItem('payrollData') || '[]');
+      
+      const newPayrollRecord = {
+        id: employeeToSave.id,
+        employeeId: employeeToSave.employeeId,
+        name: employeeToSave.name,
+        email: employeeToSave.email,
+        department: employeeToSave.department,
+        position: employeeToSave.position,
+        basicSalary: parseFloat(employeeToSave.basicSalary) || 0,
+        allowance: 0,
+        bonus: 0,
+        deductions: 0,
+        netSalary: parseFloat(employeeToSave.basicSalary) || 0,
+        status: 'Pending',
+        month: currentMonth,
+        date: new Date().toISOString().split('T')[0]
+      };
+      
+      existingPayroll.push(newPayrollRecord);
+      localStorage.setItem('payrollData', JSON.stringify(existingPayroll));
+      
+      // Add to recent activities
+      const existingActivities = JSON.parse(localStorage.getItem('recentActivities') || '[]');
+      const newActivity = {
+        id: Date.now(),
+        title: `${employeeToSave.name} has joined the company`,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        description: employeeToSave.position,
+        type: 'hire'
+      };
+      existingActivities.unshift(newActivity);
+      localStorage.setItem('recentActivities', JSON.stringify(existingActivities.slice(0, 10)));
+      
+      // IMPORTANT: Refresh the dashboard data
+      refreshData();
+      
+      setLoading(false);
+      alert('Employee added successfully!');
+      navigate('/employees');
+      
+    } catch (error) {
+      console.error('Error saving employee:', error);
+      setLoading(false);
+      alert('Error saving employee. Please try again.');
+    }
+  }, [formData, validateForm, refreshData, navigate, uploadedFiles]);
 
-  // File input renderer with preview
-  const FileUploadField = ({ label, fieldName, required, accept = ".pdf,.jpg,.jpeg,.png" }) => (
-    <div className="file-upload-field">
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      {uploadedFiles[fieldName] ? (
-        <div className="file-preview">
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="flex items-center gap-3">
-              {uploadedFiles[fieldName].type.startsWith('image/') ? (
-                <img src={uploadedFiles[fieldName].preview} alt="preview" className="w-10 h-10 object-cover rounded" />
-              ) : (
-                <FiFile className="text-red-500 text-2xl" />
-              )}
-              <div>
-                <p className="text-sm font-medium text-gray-700">{uploadedFiles[fieldName].name}</p>
-                <p className="text-xs text-gray-500">
-                  {(uploadedFiles[fieldName].preview.length / 1024).toFixed(0)} KB
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => removeFile(fieldName)}
-              className="text-red-500 hover:text-red-700 transition"
-            >
-              <FiTrash2 size={18} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <label className="file-upload-label">
-          <input
-            type="file"
-            accept={accept}
-            onChange={(e) => handleFileUpload(e, fieldName)}
-            className="hidden"
-          />
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-indigo-500 transition cursor-pointer">
-            <FiUpload className="mx-auto text-gray-400 text-2xl mb-2" />
-            <p className="text-sm text-gray-500">Click to upload or drag and drop</p>
-            <p className="text-xs text-gray-400 mt-1">PNG, JPG, PDF (Max 5MB)</p>
-          </div>
-        </label>
-      )}
-    </div>
-  );
+  // Memoize options to prevent recreation
+  const genderOptions = useMemo(() => [
+    { value: 'Male', label: 'Male' },
+    { value: 'Female', label: 'Female' },
+    { value: 'Other', label: 'Other' }
+  ], []);
+
+  const bloodGroupOptions = useMemo(() => [
+    { value: '', label: 'Select' },
+    { value: 'A+', label: 'A+' }, { value: 'A-', label: 'A-' },
+    { value: 'B+', label: 'B+' }, { value: 'B-', label: 'B-' },
+    { value: 'O+', label: 'O+' }, { value: 'O-', label: 'O-' },
+    { value: 'AB+', label: 'AB+' }, { value: 'AB-', label: 'AB-' }
+  ], []);
+
+  const maritalStatusOptions = useMemo(() => [
+    { value: 'Single', label: 'Single' },
+    { value: 'Married', label: 'Married' },
+    { value: 'Divorced', label: 'Divorced' },
+    { value: 'Widowed', label: 'Widowed' }
+  ], []);
+
+  const departmentOptions = useMemo(() => [
+    { value: 'Engineering', label: 'Engineering' },
+    { value: 'HR', label: 'Human Resources' },
+    { value: 'Finance', label: 'Finance' },
+    { value: 'Marketing', label: 'Marketing' },
+    { value: 'Sales', label: 'Sales' },
+    { value: 'Operations', label: 'Operations' }
+  ], []);
+
+  const employmentTypeOptions = useMemo(() => [
+    { value: 'Full-time', label: 'Full-time' },
+    { value: 'Part-time', label: 'Part-time' },
+    { value: 'Contract', label: 'Contract' },
+    { value: 'Internship', label: 'Internship' }
+  ], []);
+
+  const statusOptions = useMemo(() => [
+    { value: 'Active', label: 'Active' },
+    { value: 'On Leave', label: 'On Leave' },
+    { value: 'Resigned', label: 'Resigned' },
+    { value: 'Terminated', label: 'Terminated' }
+  ], []);
 
   return (
-    <div className="add-employee-page">
+    <div className="add-employee-page animate-fade-in pb-8">
       {/* Page Header with Back Button */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate('/employees')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition"
-          >
-            <FiArrowLeft size={24} className="text-gray-600" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">Add New Employee</h1>
-            <p className="text-gray-500 mt-1">Fill in all the details below to add a new employee</p>
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 -mt-6 -mx-4 md:-mx-6 px-4 md:px-6 py-4 mb-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => navigate('/employees')}
+              className="p-2 hover:bg-gray-100 rounded-lg transition"
+            >
+              <FiArrowLeft size={24} className="text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-800">Add New Employee</h1>
+              <p className="text-sm text-gray-500 mt-1">Fill in all the details below to add a new employee</p>
+            </div>
           </div>
+          <button
+            type="submit"
+            form="employee-form"
+            disabled={loading}
+            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-md disabled:opacity-50"
+          >
+            <FiSave size={18} />
+            {loading ? 'Saving...' : 'Save Employee'}
+          </button>
         </div>
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-md disabled:opacity-50"
-        >
-          <FiSave size={18} />
-          {loading ? 'Saving...' : 'Save Employee'}
-        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form id="employee-form" onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information Section */}
         <div className="form-section">
           <h3 className="section-title">📋 Basic Information</h3>
           <div className="form-grid">
-            <div className="form-group">
-              <label>Full Name *</label>
-              <input type="text" name="fullName" value={formData.fullName} onChange={handleChange} required />
-            </div>
-            <div className="form-group">
-              <label>Employee ID *</label>
-              <input type="text" name="employeeId" value={formData.employeeId} onChange={handleChange} required />
-            </div>
-            <div className="form-group">
-              <label>Date of Birth</label>
-              <input type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Gender</label>
-              <select name="gender" value={formData.gender} onChange={handleChange}>
-                <option>Male</option>
-                <option>Female</option>
-                <option>Other</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Blood Group</label>
-              <select name="bloodGroup" value={formData.bloodGroup} onChange={handleChange}>
-                <option value="">Select</option>
-                <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
-                <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Marital Status</label>
-              <select name="maritalStatus" value={formData.maritalStatus} onChange={handleChange}>
-                <option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Nationality</label>
-              <input type="text" name="nationality" value={formData.nationality} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Phone Number *</label>
-              <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required />
-            </div>
-            <div className="form-group">
-              <label>Email Address *</label>
-              <input type="email" name="email" value={formData.email} onChange={handleChange} required />
-            </div>
+            <InputField 
+              label="Full Name" 
+              name="fullName" 
+              required 
+              placeholder="Enter full name"
+              value={formData.fullName}
+              error={errors.fullName}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Employee ID" 
+              name="employeeId" 
+              required 
+              placeholder="EMP001"
+              value={formData.employeeId}
+              error={errors.employeeId}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Date of Birth" 
+              name="dateOfBirth" 
+              type="date"
+              value={formData.dateOfBirth}
+              onChange={handleChange}
+            />
+            <SelectField 
+              label="Gender" 
+              name="gender" 
+              options={genderOptions}
+              value={formData.gender}
+              onChange={handleChange}
+            />
+            <SelectField 
+              label="Blood Group" 
+              name="bloodGroup" 
+              options={bloodGroupOptions}
+              value={formData.bloodGroup}
+              onChange={handleChange}
+            />
+            <SelectField 
+              label="Marital Status" 
+              name="maritalStatus" 
+              options={maritalStatusOptions}
+              value={formData.maritalStatus}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Nationality" 
+              name="nationality" 
+              placeholder="Indian"
+              value={formData.nationality}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Phone Number" 
+              name="phone" 
+              type="tel" 
+              required 
+              placeholder="+91 98765 43210"
+              value={formData.phone}
+              error={errors.phone}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Email Address" 
+              name="email" 
+              type="email" 
+              required 
+              placeholder="employee@company.com"
+              value={formData.email}
+              error={errors.email}
+              onChange={handleChange}
+            />
           </div>
         </div>
 
@@ -301,30 +527,48 @@ const AddEmployee = () => {
         <div className="form-section">
           <h3 className="section-title">👨‍👩‍👧‍👦 Family Information</h3>
           <div className="form-grid">
-            <div className="form-group">
-              <label>Father's Name</label>
-              <input type="text" name="fatherName" value={formData.fatherName} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Father's Contact</label>
-              <input type="tel" name="fatherContact" value={formData.fatherContact} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Mother's Name</label>
-              <input type="text" name="motherName" value={formData.motherName} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Mother's Contact</label>
-              <input type="tel" name="motherContact" value={formData.motherContact} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Spouse Name</label>
-              <input type="text" name="spouseName" value={formData.spouseName} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Spouse Contact</label>
-              <input type="tel" name="spouseContact" value={formData.spouseContact} onChange={handleChange} />
-            </div>
+            <InputField 
+              label="Father's Name" 
+              name="fatherName" 
+              placeholder="Enter father's name"
+              value={formData.fatherName}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Father's Contact" 
+              name="fatherContact" 
+              placeholder="+91 98765 43210"
+              value={formData.fatherContact}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Mother's Name" 
+              name="motherName" 
+              placeholder="Enter mother's name"
+              value={formData.motherName}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Mother's Contact" 
+              name="motherContact" 
+              placeholder="+91 98765 43210"
+              value={formData.motherContact}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Spouse Name" 
+              name="spouseName" 
+              placeholder="Enter spouse name"
+              value={formData.spouseName}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Spouse Contact" 
+              name="spouseContact" 
+              placeholder="+91 98765 43210"
+              value={formData.spouseContact}
+              onChange={handleChange}
+            />
           </div>
         </div>
 
@@ -332,16 +576,22 @@ const AddEmployee = () => {
         <div className="form-section">
           <h3 className="section-title">📍 Address Information</h3>
           <div className="space-y-4">
-            <div className="form-group">
-              <label>Current Address</label>
-              <textarea name="address" rows="3" value={formData.address} onChange={handleChange} 
-                placeholder="House No., Street, City, State, PIN Code"></textarea>
-            </div>
-            <div className="form-group">
-              <label>Permanent Address</label>
-              <textarea name="permanentAddress" rows="3" value={formData.permanentAddress} onChange={handleChange}
-                placeholder="House No., Street, City, State, PIN Code"></textarea>
-            </div>
+            <TextAreaField 
+              label="Current Address" 
+              name="address" 
+              rows={3}
+              placeholder="House No., Street, City, State, PIN Code"
+              value={formData.address}
+              onChange={handleChange}
+            />
+            <TextAreaField 
+              label="Permanent Address" 
+              name="permanentAddress" 
+              rows={3}
+              placeholder="House No., Street, City, State, PIN Code"
+              value={formData.permanentAddress}
+              onChange={handleChange}
+            />
           </div>
         </div>
 
@@ -349,18 +599,27 @@ const AddEmployee = () => {
         <div className="form-section">
           <h3 className="section-title">🚨 Emergency Contact</h3>
           <div className="form-grid">
-            <div className="form-group">
-              <label>Contact Person Name</label>
-              <input type="text" name="emergencyContactName" value={formData.emergencyContactName} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Relationship</label>
-              <input type="text" name="emergencyContactRelation" value={formData.emergencyContactRelation} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Contact Number</label>
-              <input type="tel" name="emergencyContactNumber" value={formData.emergencyContactNumber} onChange={handleChange} />
-            </div>
+            <InputField 
+              label="Contact Person Name" 
+              name="emergencyContactName" 
+              placeholder="Contact person name"
+              value={formData.emergencyContactName}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Relationship" 
+              name="emergencyContactRelation" 
+              placeholder="Father, Mother, Spouse"
+              value={formData.emergencyContactRelation}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Contact Number" 
+              name="emergencyContactNumber" 
+              placeholder="+91 98765 43210"
+              value={formData.emergencyContactNumber}
+              onChange={handleChange}
+            />
           </div>
         </div>
 
@@ -368,37 +627,51 @@ const AddEmployee = () => {
         <div className="form-section">
           <h3 className="section-title">💼 Job Information</h3>
           <div className="form-grid">
-            <div className="form-group">
-              <label>Department</label>
-              <select name="department" value={formData.department} onChange={handleChange}>
-                <option>Engineering</option><option>HR</option><option>Finance</option>
-                <option>Marketing</option><option>Sales</option><option>Operations</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Designation</label>
-              <input type="text" name="designation" value={formData.designation} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Work Location</label>
-              <input type="text" name="workLocation" value={formData.workLocation} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Employment Type</label>
-              <select name="employmentType" value={formData.employmentType} onChange={handleChange}>
-                <option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Joining Date</label>
-              <input type="date" name="joiningDate" value={formData.joiningDate} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Status</label>
-              <select name="status" value={formData.status} onChange={handleChange}>
-                <option>Active</option><option>On Leave</option><option>Resigned</option><option>Terminated</option>
-              </select>
-            </div>
+            <SelectField 
+              label="Department" 
+              name="department" 
+              required
+              options={departmentOptions}
+              value={formData.department}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Designation" 
+              name="designation" 
+              required 
+              placeholder="Senior Developer"
+              value={formData.designation}
+              error={errors.designation}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Work Location" 
+              name="workLocation" 
+              placeholder="City, Office location"
+              value={formData.workLocation}
+              onChange={handleChange}
+            />
+            <SelectField 
+              label="Employment Type" 
+              name="employmentType" 
+              options={employmentTypeOptions}
+              value={formData.employmentType}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Joining Date" 
+              name="joiningDate" 
+              type="date"
+              value={formData.joiningDate}
+              onChange={handleChange}
+            />
+            <SelectField 
+              label="Status" 
+              name="status" 
+              options={statusOptions}
+              value={formData.status}
+              onChange={handleChange}
+            />
           </div>
         </div>
 
@@ -406,18 +679,37 @@ const AddEmployee = () => {
         <div className="form-section">
           <h3 className="section-title">📊 Previous Employment</h3>
           <div className="form-grid">
-            <div className="form-group">
-              <label>Previous Company</label>
-              <input type="text" name="previousCompany" value={formData.previousCompany} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Previous Salary (₹)</label>
-              <input type="number" name="previousSalary" value={formData.previousSalary} onChange={handleChange} />
-            </div>
+            <InputField 
+              label="Previous Company" 
+              name="previousCompany" 
+              placeholder="Previous employer"
+              value={formData.previousCompany}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Previous Salary (₹)" 
+              name="previousSalary" 
+              type="number" 
+              placeholder="50000"
+              value={formData.previousSalary}
+              onChange={handleChange}
+            />
           </div>
           <div className="file-upload-grid">
-            <FileUploadField label="Previous Salary Slip" fieldName="previousSalarySlip" />
-            <FileUploadField label="Previous Experience Certificate" fieldName="previousExperienceCertificate" />
+            <FileUploadField 
+              label="Previous Salary Slip" 
+              fieldName="previousSalarySlip"
+              uploadedFile={uploadedFiles.previousSalarySlip}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
+            <FileUploadField 
+              label="Previous Experience Certificate" 
+              fieldName="previousExperienceCertificate"
+              uploadedFile={uploadedFiles.previousExperienceCertificate}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
           </div>
         </div>
 
@@ -425,13 +717,38 @@ const AddEmployee = () => {
         <div className="form-section">
           <h3 className="section-title">💰 Current Employment Documents</h3>
           <div className="form-group">
-            <label>Current Salary (₹)</label>
-            <input type="number" name="currentSalary" value={formData.currentSalary} onChange={handleChange} />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Current Salary (₹)</label>
+            <input
+              type="number"
+              name="currentSalary"
+              value={formData.currentSalary}
+              onChange={handleChange}
+              placeholder="50000"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400"
+            />
           </div>
           <div className="file-upload-grid">
-            <FileUploadField label="Current Experience Letter" fieldName="currentExperienceLetter" />
-            <FileUploadField label="Offer Letter" fieldName="offerLetter" />
-            <FileUploadField label="Appointment Letter" fieldName="appointmentLetter" />
+            <FileUploadField 
+              label="Current Experience Letter" 
+              fieldName="currentExperienceLetter"
+              uploadedFile={uploadedFiles.currentExperienceLetter}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
+            <FileUploadField 
+              label="Offer Letter" 
+              fieldName="offerLetter"
+              uploadedFile={uploadedFiles.offerLetter}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
+            <FileUploadField 
+              label="Appointment Letter" 
+              fieldName="appointmentLetter"
+              uploadedFile={uploadedFiles.appointmentLetter}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
           </div>
         </div>
 
@@ -439,29 +756,63 @@ const AddEmployee = () => {
         <div className="form-section">
           <h3 className="section-title">🏦 Bank Information</h3>
           <div className="form-grid">
-            <div className="form-group">
-              <label>Bank Name</label>
-              <input type="text" name="bankName" value={formData.bankName} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Account Number</label>
-              <input type="text" name="accountNumber" value={formData.accountNumber} onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>IFSC Code</label>
-              <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleChange} />
-            </div>
+            <InputField 
+              label="Bank Name" 
+              name="bankName" 
+              placeholder="Bank name"
+              value={formData.bankName}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="Account Number" 
+              name="accountNumber" 
+              placeholder="Account number"
+              value={formData.accountNumber}
+              onChange={handleChange}
+            />
+            <InputField 
+              label="IFSC Code" 
+              name="ifscCode" 
+              placeholder="IFSC code"
+              value={formData.ifscCode}
+              onChange={handleChange}
+            />
           </div>
-          <FileUploadField label="Bank Passbook / Cancelled Cheque" fieldName="bankPassbook" />
+          <FileUploadField 
+            label="Bank Passbook / Cancelled Cheque" 
+            fieldName="bankPassbook"
+            uploadedFile={uploadedFiles.bankPassbook}
+            onFileUpload={handleFileUpload}
+            onFileRemove={handleRemoveFile}
+          />
         </div>
 
         {/* Personal Documents */}
         <div className="form-section">
           <h3 className="section-title">📎 Personal Documents</h3>
           <div className="file-upload-grid">
-            <FileUploadField label="Aadhar Card" fieldName="aadharCard" />
-            <FileUploadField label="PAN Card" fieldName="panCard" />
-            <FileUploadField label="Passport Size Photo" fieldName="passportPhoto" accept=".jpg,.jpeg,.png" />
+            <FileUploadField 
+              label="Aadhar Card" 
+              fieldName="aadharCard"
+              uploadedFile={uploadedFiles.aadharCard}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
+            <FileUploadField 
+              label="PAN Card" 
+              fieldName="panCard"
+              uploadedFile={uploadedFiles.panCard}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
+            <FileUploadField 
+              label="Passport Size Photo" 
+              fieldName="passportPhoto" 
+              accept=".jpg,.jpeg,.png"
+              uploadedFile={uploadedFiles.passportPhoto}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
           </div>
         </div>
 
@@ -469,17 +820,47 @@ const AddEmployee = () => {
         <div className="form-section">
           <h3 className="section-title">🎓 Educational Documents</h3>
           <div className="file-upload-grid">
-            <FileUploadField label="10th Marksheet" fieldName="tenthMarksheet" />
-            <FileUploadField label="12th Marksheet" fieldName="twelfthMarksheet" />
-            <FileUploadField label="Graduation Marksheet" fieldName="graduationMarksheet" />
-            <FileUploadField label="Post Graduation Marksheet" fieldName="postGraduationMarksheet" />
+            <FileUploadField 
+              label="10th Marksheet" 
+              fieldName="tenthMarksheet"
+              uploadedFile={uploadedFiles.tenthMarksheet}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
+            <FileUploadField 
+              label="12th Marksheet" 
+              fieldName="twelfthMarksheet"
+              uploadedFile={uploadedFiles.twelfthMarksheet}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
+            <FileUploadField 
+              label="Graduation Marksheet" 
+              fieldName="graduationMarksheet"
+              uploadedFile={uploadedFiles.graduationMarksheet}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
+            <FileUploadField 
+              label="Post Graduation Marksheet" 
+              fieldName="postGraduationMarksheet"
+              uploadedFile={uploadedFiles.postGraduationMarksheet}
+              onFileUpload={handleFileUpload}
+              onFileRemove={handleRemoveFile}
+            />
           </div>
         </div>
 
         {/* Resume Upload */}
         <div className="form-section">
           <h3 className="section-title">📄 Resume</h3>
-          <FileUploadField label="Upload Resume" fieldName="resume" />
+          <FileUploadField 
+            label="Upload Resume" 
+            fieldName="resume"
+            uploadedFile={uploadedFiles.resume}
+            onFileUpload={handleFileUpload}
+            onFileRemove={handleRemoveFile}
+          />
         </div>
       </form>
     </div>

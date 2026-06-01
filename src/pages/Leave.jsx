@@ -1,11 +1,11 @@
-// src/pages/Leave.jsx (Complete Fixed Version)
+// src/pages/Leave.jsx - Fixed with automatic cleanup on employee deletion
 import React, { useState, useEffect } from 'react';
-import {
-  FiCalendar,
-  FiUser,
-  FiClock,
-  FiCheckCircle,
-  FiXCircle,
+import { 
+  FiCalendar, 
+  FiUser, 
+  FiClock, 
+  FiCheckCircle, 
+  FiXCircle, 
   FiAlertCircle,
   FiChevronLeft,
   FiChevronRight,
@@ -19,9 +19,11 @@ import {
   FiRefreshCw,
   FiX
 } from 'react-icons/fi';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, differenceInDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, differenceInDays, isValid, isBefore, isAfter, startOfToday } from 'date-fns';
+import { useAppContext } from '../context/AppContext';
 
 const Leave = () => {
+  const { employees: globalEmployees, refreshData } = useAppContext();
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [filteredRequests, setFilteredRequests] = useState([]);
@@ -32,9 +34,10 @@ const Leave = () => {
   const [itemsPerPage] = useState(10);
   const [loading, setLoading] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [isFilterOpen, setIsFilterOpen] = useState(true); // Default open
+  const [isFilterOpen, setIsFilterOpen] = useState(true);
+  const [forceRefresh, setForceRefresh] = useState(0);
 
-  // Filters - Fixed layout
+  // Filters
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
@@ -53,6 +56,10 @@ const Leave = () => {
     type: 'Casual Leave'
   });
   const [calculatedDays, setCalculatedDays] = useState(0);
+  const [dateErrors, setDateErrors] = useState({
+    fromDate: '',
+    toDate: ''
+  });
 
   // Statistics
   const [statistics, setStatistics] = useState({
@@ -62,210 +69,271 @@ const Leave = () => {
     rejected: 0
   });
 
+  // Clean up orphaned leave requests (employees that no longer exist)
+  const cleanupOrphanedLeaves = (leaveList, employeeList) => {
+    if (!leaveList.length || !employeeList.length) {
+      // If no employees exist, clear all leave requests
+      if (employeeList.length === 0 && leaveList.length > 0) {
+        localStorage.setItem('leaveRequests', JSON.stringify([]));
+        return [];
+      }
+      return leaveList;
+    }
+    
+    const validEmployeeIds = employeeList.map(emp => emp.employeeId || emp.id);
+    const cleanedLeaves = leaveList.filter(leave => {
+      // Check if the leave has a valid employee ID and it exists in current employees
+      return leave.employeeId && validEmployeeIds.includes(leave.employeeId);
+    });
+    
+    // Also update employee names to match current data
+    const updatedLeaves = cleanedLeaves.map(leave => {
+      const matchingEmployee = employeeList.find(emp => (emp.employeeId || emp.id) === leave.employeeId);
+      if (matchingEmployee) {
+        return {
+          ...leave,
+          employeeName: matchingEmployee.name,
+          department: matchingEmployee.department
+        };
+      }
+      return leave;
+    });
+    
+    if (updatedLeaves.length !== leaveList.length) {
+      localStorage.setItem('leaveRequests', JSON.stringify(updatedLeaves));
+      console.log(`Cleaned up ${leaveList.length - updatedLeaves.length} orphaned leave requests`);
+    }
+    
+    return updatedLeaves;
+  };
+
+  // Load data on mount and when forceRefresh changes
   useEffect(() => {
     loadData();
-  }, []);
+  }, [forceRefresh, globalEmployees]);
 
   useEffect(() => {
     applyFilters();
   }, [leaveRequests, dateRange, selectedEmployee, selectedStatus, selectedDepartment, searchTerm]);
 
+  // Listen for storage changes (when employees are deleted from another tab)
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'employees' || e.key === 'leaveRequests') {
+        loadData();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   const loadData = () => {
-
-   
-
-    const storedEmployees = localStorage.getItem('employees');
-
+    console.log('Loading leave data...');
+    
+    // Load employees
     let employeeList = [];
-
-    try {
-
-      if (storedEmployees) {
+    if (globalEmployees && globalEmployees.length > 0) {
+      employeeList = globalEmployees;
+    } else {
+      const storedEmployees = localStorage.getItem('employees');
+      if (storedEmployees && JSON.parse(storedEmployees).length > 0) {
         employeeList = JSON.parse(storedEmployees);
       }
-
-    } catch (error) {
-      console.error('Employee parse error:', error);
     }
-
-    // Default employees if empty
-    if (!employeeList || employeeList.length === 0) {
-
-      employeeList = [
-        {
-         
-        }
-        
-      ];
-
-      localStorage.setItem('employees', JSON.stringify(employeeList));
-    }
+    
+    // Filter out any invalid employees (with empty names)
+    employeeList = employeeList.filter(emp => emp.name && emp.name.trim() !== '' && emp.name !== 'Unknown');
     setEmployees(employeeList);
 
-    // Load leave requests from localStorage
-    const storedLeaves = localStorage.getItem('leaveRequests');
-    let leaveList = [];
-
-  try {
-
+    // Load leave requests
+    let storedLeaves = localStorage.getItem('leaveRequests');
+    let parsedLeaves = [];
+    
     if (storedLeaves) {
-      leaveList = JSON.parse(storedLeaves);
+      parsedLeaves = JSON.parse(storedLeaves);
+      console.log('Raw leaves count:', parsedLeaves.length);
+      
+      // Clean up orphaned leave requests (remove leaves for deleted employees)
+      const cleanedLeaves = cleanupOrphanedLeaves(parsedLeaves, employeeList);
+      console.log('Cleaned leaves count:', cleanedLeaves.length);
+      
+      setLeaveRequests(cleanedLeaves);
+    } else {
+      console.log('No leaves found, initializing empty array');
+      setLeaveRequests([]);
+      localStorage.setItem('leaveRequests', JSON.stringify([]));
     }
-
-  } catch (error) {
-    console.error('Leave parse error:', error);
-  }
-
- if (!leaveList || leaveList.length === 0) {
-
-    const defaultLeaves = [
-      {
-      }
-    ];
-
-    leaveList = defaultLeaves;
-
-    localStorage.setItem(
-      'leaveRequests',
-      JSON.stringify(defaultLeaves)
-    );
-  }
-
-  // FINAL STATE UPDATE
-  setLeaveRequests(leaveList);
-  setFilteredRequests(leaveList);
-
-  // Update statistics
-  calculateStatistics(leaveList);
-};
+  };
 
   const calculateStatistics = (data) => {
     const total = data.length;
     const approved = data.filter(l => l.status === 'Approved').length;
     const pending = data.filter(l => l.status === 'Pending').length;
     const rejected = data.filter(l => l.status === 'Rejected').length;
-
+    
     setStatistics({ total, approved, pending, rejected });
   };
 
   const applyFilters = () => {
     let filtered = [...leaveRequests];
-
-    // Optional Date Range Filter
-    if (dateRange.start || dateRange.end) {
-
-      const startDate = dateRange.start
-        ? new Date(dateRange.start)
-        : new Date('2000-01-01');
-
-      const endDate = dateRange.end
-        ? new Date(dateRange.end)
-        : new Date('2100-12-31');
-
+    
+    // Date range filter
+    if (dateRange.start && dateRange.end) {
+      const startDate = new Date(dateRange.start);
+      const endDate = new Date(dateRange.end);
       endDate.setHours(23, 59, 59);
-
+      
       filtered = filtered.filter(record => {
+        if (!record.fromDate || !record.toDate) return false;
         const fromDate = new Date(record.fromDate);
         const toDate = new Date(record.toDate);
-
         return fromDate <= endDate && toDate >= startDate;
       });
     }
-
+    
     // Employee filter
     if (selectedEmployee !== 'all') {
-      filtered = filtered.filter(
-        record => record.employeeId === selectedEmployee
-      );
+      filtered = filtered.filter(record => record.employeeId === selectedEmployee);
     }
-
+    
     // Status filter
     if (selectedStatus !== 'all') {
-      filtered = filtered.filter(
-        record => record.status === selectedStatus
-      );
+      filtered = filtered.filter(record => record.status === selectedStatus);
     }
-
+    
     // Department filter
     if (selectedDepartment !== 'all') {
-      filtered = filtered.filter(
-        record => record.department === selectedDepartment
-      );
+      filtered = filtered.filter(record => record.department === selectedDepartment);
     }
-
+    
     // Search filter
     if (searchTerm.trim()) {
-      filtered = filtered.filter(record =>
-        record.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.reason.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(record => 
+        (record.employeeName && record.employeeName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (record.employeeId && record.employeeId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (record.reason && record.reason.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
-
+    
     setFilteredRequests(filtered);
-
-    // Update statistics
     calculateStatistics(filtered);
-
-    // Reset pagination
     setCurrentPage(1);
+  };
+
+  // Safe date formatter function
+  const safeFormatDate = (dateString, dateFormat = 'dd MMM yyyy') => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (!isValid(date)) return 'Invalid Date';
+    return format(date, dateFormat);
+  };
+
+  // Validate dates (prevent past dates)
+  const validateDates = (fromDate, toDate) => {
+    const errors = { fromDate: '', toDate: '' };
+    const today = startOfToday();
+    
+    if (fromDate) {
+      const from = new Date(fromDate);
+      if (isBefore(from, today)) {
+        errors.fromDate = 'From date cannot be in the past';
+      }
+    }
+    
+    if (toDate) {
+      const to = new Date(toDate);
+      if (isBefore(to, today)) {
+        errors.toDate = 'To date cannot be in the past';
+      }
+    }
+    
+    if (fromDate && toDate && !errors.fromDate && !errors.toDate) {
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+      if (isBefore(to, from)) {
+        errors.toDate = 'To date must be after from date';
+      }
+    }
+    
+    setDateErrors(errors);
+    return errors.fromDate === '' && errors.toDate === '';
   };
 
   const handleLeaveFormChange = (e) => {
     const { name, value } = e.target;
     setLeaveForm(prev => ({ ...prev, [name]: value }));
-
+    
     if (name === 'fromDate' || name === 'toDate') {
-      setTimeout(() => calculateLeaveDays(), 0);
+      const newFromDate = name === 'fromDate' ? value : leaveForm.fromDate;
+      const newToDate = name === 'toDate' ? value : leaveForm.toDate;
+      
+      if (newFromDate && newToDate) {
+        validateDates(newFromDate, newToDate);
+        calculateLeaveDays(newFromDate, newToDate);
+      } else if (newFromDate) {
+        validateDates(newFromDate, '');
+        calculateLeaveDays(newFromDate, '');
+      } else if (newToDate) {
+        validateDates('', newToDate);
+        calculateLeaveDays('', newToDate);
+      }
     }
   };
 
-  const calculateLeaveDays = () => {
-    if (leaveForm.fromDate && leaveForm.toDate) {
-      const from = new Date(leaveForm.fromDate);
-      const to = new Date(leaveForm.toDate);
-      const days = differenceInDays(to, from) + 1;
-      setCalculatedDays(days > 0 ? days : 0);
+  const calculateLeaveDays = (fromDateParam, toDateParam) => {
+    const from = fromDateParam || leaveForm.fromDate;
+    const to = toDateParam || leaveForm.toDate;
+    
+    if (from && to) {
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
+      if (isValid(fromDate) && isValid(toDate) && toDate >= fromDate) {
+        const days = differenceInDays(toDate, fromDate) + 1;
+        setCalculatedDays(days > 0 ? days : 0);
+      } else {
+        setCalculatedDays(0);
+      }
     } else {
       setCalculatedDays(0);
     }
   };
 
   const submitLeaveApplication = async () => {
-
+    // Validation
     if (!leaveForm.employeeId) {
       alert('Please select an employee');
       return;
     }
-
     if (!leaveForm.fromDate) {
       alert('Please select from date');
       return;
     }
-
     if (!leaveForm.toDate) {
       alert('Please select to date');
       return;
     }
-
     if (!leaveForm.reason) {
       alert('Please provide a reason');
       return;
     }
-
-    if (calculatedDays <= 0) {
-      alert('Invalid date range');
+    
+    // Validate dates are not in past
+    const isValidDates = validateDates(leaveForm.fromDate, leaveForm.toDate);
+    if (!isValidDates) {
+      alert('Please fix date errors before submitting');
       return;
     }
-
+    
+    if (calculatedDays <= 0) {
+      alert('Invalid date range. Please check your dates.');
+      return;
+    }
+    
     setLoading(true);
-
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const employee = employees.find(
-      emp => emp.employeeId === leaveForm.employeeId
-    );
-
+    
+    const employee = employees.find(emp => emp.employeeId === leaveForm.employeeId);
+    
     const newLeave = {
       id: Date.now(),
       employeeId: leaveForm.employeeId,
@@ -282,38 +350,38 @@ const Leave = () => {
       reviewedOn: null,
       remarks: null
     };
-
-    // Add new leave
-    const updatedLeaves = [...leaveRequests, newLeave];
-
-    // Update state
+    
+    console.log('Submitting new leave:', newLeave);
+    
+    // Get existing leave requests
+    const existingLeaves = localStorage.getItem('leaveRequests');
+    let updatedLeaves = [];
+    
+    if (existingLeaves) {
+      const parsedLeaves = JSON.parse(existingLeaves);
+      updatedLeaves = [...parsedLeaves, newLeave];
+    } else {
+      updatedLeaves = [newLeave];
+    }
+    
+    console.log('Updated leaves array:', updatedLeaves);
+    
+    // Save to localStorage
+    localStorage.setItem('leaveRequests', JSON.stringify(updatedLeaves));
+    
+    // Update state immediately
     setLeaveRequests(updatedLeaves);
-
-    // Save localStorage
-    localStorage.setItem(
-      'leaveRequests',
-      JSON.stringify(updatedLeaves)
-    );
-
-    // Refresh filters instantly
-    setFilteredRequests(updatedLeaves);
-
-    // Refresh statistics
-    calculateStatistics(updatedLeaves);
-
-    // Reset pagination
-    setCurrentPage(1);
-
-    // Optional: clear date filters after submit
-    setDateRange({
-      start: '',
-      end: ''
-    });
-
-    // Close modal
-    setShowApplyModal(false);
-
+    
+    // Force a re-render of filtered data
+    setForceRefresh(prev => prev + 1);
+    
+    // Refresh data in context if available
+    if (refreshData) {
+      refreshData();
+    }
+    
     // Reset form
+    setShowApplyModal(false);
     setLeaveForm({
       employeeId: '',
       fromDate: '',
@@ -321,31 +389,38 @@ const Leave = () => {
       reason: '',
       type: 'Casual Leave'
     });
-
     setCalculatedDays(0);
-
+    setDateErrors({ fromDate: '', toDate: '' });
     setLoading(false);
-
+    
     alert('Leave application submitted successfully!');
+    
+    // Force another refresh to ensure UI updates
+    setTimeout(() => {
+      loadData();
+    }, 100);
   };
+
   const handleApprove = async (id) => {
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 500));
-
+    
     const updatedLeaves = leaveRequests.map(leave =>
-      leave.id === id
-        ? {
-          ...leave,
-          status: 'Approved',
-          reviewedBy: 'HR Manager',
-          reviewedOn: new Date().toISOString().split('T')[0],
-          remarks: 'Approved'
-        }
+      leave.id === id 
+        ? { 
+            ...leave, 
+            status: 'Approved', 
+            reviewedBy: 'HR Manager',
+            reviewedOn: new Date().toISOString().split('T')[0],
+            remarks: 'Approved'
+          }
         : leave
     );
-
+    
     setLeaveRequests(updatedLeaves);
     localStorage.setItem('leaveRequests', JSON.stringify(updatedLeaves));
+    if (refreshData) refreshData();
+    setForceRefresh(prev => prev + 1);
     setLoading(false);
     alert('Leave request approved successfully!');
   };
@@ -353,24 +428,26 @@ const Leave = () => {
   const handleReject = async (id) => {
     const remarks = prompt('Please provide reason for rejection:');
     if (!remarks) return;
-
+    
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 500));
-
+    
     const updatedLeaves = leaveRequests.map(leave =>
-      leave.id === id
-        ? {
-          ...leave,
-          status: 'Rejected',
-          reviewedBy: 'HR Manager',
-          reviewedOn: new Date().toISOString().split('T')[0],
-          remarks: remarks
-        }
+      leave.id === id 
+        ? { 
+            ...leave, 
+            status: 'Rejected', 
+            reviewedBy: 'HR Manager',
+            reviewedOn: new Date().toISOString().split('T')[0],
+            remarks: remarks
+          }
         : leave
     );
-
+    
     setLeaveRequests(updatedLeaves);
     localStorage.setItem('leaveRequests', JSON.stringify(updatedLeaves));
+    if (refreshData) refreshData();
+    setForceRefresh(prev => prev + 1);
     setLoading(false);
     alert('Leave request rejected!');
   };
@@ -383,18 +460,18 @@ const Leave = () => {
   const exportToCSV = () => {
     const headers = ['Employee ID', 'Employee Name', 'Department', 'From Date', 'To Date', 'Days', 'Leave Type', 'Reason', 'Status', 'Applied On'];
     const csvData = filteredRequests.map(record => [
-      record.employeeId,
-      record.employeeName,
-      record.department,
-      record.fromDate,
-      record.toDate,
-      record.days,
-      record.type,
-      `"${record.reason}"`,
-      record.status,
-      record.appliedOn
+      record.employeeId || '',
+      record.employeeName || '',
+      record.department || '',
+      record.fromDate || '',
+      record.toDate || '',
+      record.days || 0,
+      record.type || '',
+      `"${record.reason || ''}"`,
+      record.status || '',
+      record.appliedOn || ''
     ]);
-
+    
     const csvContent = [headers, ...csvData].map(row => row.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -407,26 +484,28 @@ const Leave = () => {
   };
 
   const resetFilters = () => {
-
     setDateRange({
-      start: '',
-      end: ''
+      start: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
+      end: new Date().toISOString().split('T')[0]
     });
-
     setSelectedEmployee('all');
     setSelectedStatus('all');
     setSelectedDepartment('all');
     setSearchTerm('');
-
-    setCurrentPage(1);
+    setTimeout(() => applyFilters(), 0);
   };
 
-  // Calendar generation
+  // Calendar generation with safe date handling
   const getCalendarDays = () => {
+    if (!isValid(currentMonth)) {
+      setCurrentMonth(new Date());
+      return [];
+    }
+    
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
     const days = eachDayOfInterval({ start, end });
-
+    
     const startDayOfWeek = start.getDay();
     const prevMonthDays = [];
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
@@ -434,7 +513,7 @@ const Leave = () => {
       prevDate.setDate(start.getDate() - (i + 1));
       prevMonthDays.push(prevDate);
     }
-
+    
     const endDayOfWeek = end.getDay();
     const nextMonthDays = [];
     for (let i = 1; i <= 6 - endDayOfWeek; i++) {
@@ -442,15 +521,16 @@ const Leave = () => {
       nextDate.setDate(end.getDate() + i);
       nextMonthDays.push(nextDate);
     }
-
+    
     return [...prevMonthDays, ...days, ...nextMonthDays];
   };
 
   const getLeaveColor = (date) => {
+    if (!isValid(date)) return '';
     const dateStr = format(date, 'yyyy-MM-dd');
     const leave = leaveRequests.find(l => l.fromDate <= dateStr && l.toDate >= dateStr);
     if (!leave) return '';
-    switch (leave.status) {
+    switch(leave.status) {
       case 'Approved': return 'bg-green-100 text-green-700';
       case 'Pending': return 'bg-yellow-100 text-yellow-700';
       case 'Rejected': return 'bg-red-100 text-red-700';
@@ -467,7 +547,7 @@ const Leave = () => {
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
   const getStatusBadge = (status) => {
-    switch (status) {
+    switch(status) {
       case 'Approved':
         return <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700"><FiCheckCircle className="mr-1" size={12} />Approved</span>;
       case 'Pending':
@@ -475,11 +555,11 @@ const Leave = () => {
       case 'Rejected':
         return <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700"><FiXCircle className="mr-1" size={12} />Rejected</span>;
       default:
-        return <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">{status}</span>;
+        return <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">{status || 'Unknown'}</span>;
     }
   };
 
-  const departments = [...new Set(employees.map(emp => emp.department))];
+  const departments = [...new Set(employees.map(emp => emp.department).filter(Boolean))];
 
   return (
     <div className="animate-fade-in pb-8">
@@ -549,7 +629,7 @@ const Leave = () => {
         </div>
       </div>
 
-      {/* Filters Section - Fixed Layout */}
+      {/* Filters Section */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
         <button
           onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -564,10 +644,9 @@ const Leave = () => {
           </div>
           <FiChevronRight className={`transform transition-transform ${isFilterOpen ? 'rotate-90' : ''}`} />
         </button>
-
+        
         {isFilterOpen && (
           <div className="p-4 border-t border-gray-100">
-            {/* Date Range Row - Fixed overlapping issue */}
             <div className="mb-4">
               <label className="block text-xs font-medium text-gray-500 mb-2">Date Range</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -600,7 +679,7 @@ const Leave = () => {
                   onChange={(e) => setSelectedEmployee(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-indigo-400 bg-white"
                 >
-                  <option value="all">All Employees</option>
+                  <option key="all-employees" value="all">All Employees</option>
                   {employees.map(emp => (
                     <option key={emp.id} value={emp.employeeId}>{emp.name} ({emp.employeeId})</option>
                   ))}
@@ -614,10 +693,10 @@ const Leave = () => {
                   onChange={(e) => setSelectedStatus(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-indigo-400 bg-white"
                 >
-                  <option value="all">All Status</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Rejected">Rejected</option>
+                  <option key="all-status" value="all">All Status</option>
+                  <option key="status-approved" value="Approved">Approved</option>
+                  <option key="status-pending" value="Pending">Pending</option>
+                  <option key="status-rejected" value="Rejected">Rejected</option>
                 </select>
               </div>
 
@@ -628,9 +707,9 @@ const Leave = () => {
                   onChange={(e) => setSelectedDepartment(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-indigo-400 bg-white"
                 >
-                  <option value="all">All Departments</option>
-                  {departments.map(dept => (
-                    <option key={dept} value={dept}>{dept}</option>
+                  <option key="all-departments" value="all">All Departments</option>
+                  {departments.map((dept, idx) => (
+                    <option key={`dept-${dept}-${idx}`} value={dept}>{dept}</option>
                   ))}
                 </select>
               </div>
@@ -649,7 +728,7 @@ const Leave = () => {
                 </div>
               </div>
             </div>
-
+            
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={resetFilters}
@@ -673,7 +752,7 @@ const Leave = () => {
         {/* Calendar Section */}
         <div className="lg:col-span-1 bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-800">{format(currentMonth, 'MMMM yyyy')}</h3>
+            <h3 className="font-semibold text-gray-800">{safeFormatDate(currentMonth, 'MMMM yyyy')}</h3>
             <div className="flex gap-2">
               <button
                 onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
@@ -695,8 +774,7 @@ const Leave = () => {
               </button>
             </div>
           </div>
-
-          {/* Calendar Header */}
+          
           <div className="grid grid-cols-7 gap-1 mb-2">
             {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
               <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
@@ -704,27 +782,28 @@ const Leave = () => {
               </div>
             ))}
           </div>
-
-          {/* Calendar Days */}
+          
           <div className="grid grid-cols-7 gap-1">
             {getCalendarDays().map((date, idx) => {
               const isCurrentMonth = isSameMonth(date, currentMonth);
               const leaveColor = getLeaveColor(date);
-
+              const isToday = isSameDay(date, new Date());
+              
               return (
                 <div
-                  key={idx}
-                  className={`text-center py-2 text-sm rounded-lg transition ${isCurrentMonth ? 'text-gray-800' : 'text-gray-400'
-                    } ${leaveColor} ${isSameDay(date, new Date()) ? 'ring-2 ring-indigo-500 font-bold' : ''
-                    } hover:bg-gray-100 cursor-pointer`}
+                  key={`calendar-day-${idx}`}
+                  className={`text-center py-2 text-sm rounded-lg transition ${
+                    isCurrentMonth ? 'text-gray-800' : 'text-gray-400'
+                  } ${leaveColor} ${
+                    isToday ? 'ring-2 ring-indigo-500 font-bold' : ''
+                  } hover:bg-gray-100 cursor-pointer`}
                 >
-                  {format(date, 'd')}
+                  {isValid(date) ? format(date, 'd') : '?'}
                 </div>
               );
             })}
           </div>
-
-          {/* Calendar Legend */}
+          
           <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap gap-3 text-xs">
             <div className="flex items-center gap-1">
               <div className="w-3 h-3 bg-green-100 rounded"></div>
@@ -771,7 +850,7 @@ const Leave = () => {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <h3 className="font-semibold text-gray-800">
-            Leave Requests
+            Leave Requests 
             <span className="ml-2 text-sm font-normal text-gray-500">({filteredRequests.length} entries)</span>
           </h3>
           <button
@@ -799,33 +878,33 @@ const Leave = () => {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {currentItems.length > 0 ? (
-                currentItems.map((request) => (
-                  <tr key={request.id} className="hover:bg-gray-50 transition">
+                currentItems.map((request, index) => (
+                  <tr key={`leave-${request.id}-${index}`} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
                           <FiUser className="text-indigo-600 text-sm" />
                         </div>
                         <div>
-                          <p className="font-medium text-gray-800">{request.employeeName}</p>
-                          <p className="text-xs text-gray-500">{request.employeeId}</p>
+                          <p className="font-medium text-gray-800">{request.employeeName || 'Unknown'}</p>
+                          <p className="text-xs text-gray-500">{request.employeeId || 'N/A'}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-gray-700">{request.department}</span>
+                      <span className="text-sm text-gray-700">{request.department || 'N/A'}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-gray-700">{format(new Date(request.fromDate), 'dd MMM yyyy')}</span>
+                      <span className="text-sm text-gray-700">{safeFormatDate(request.fromDate)}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-gray-700">{format(new Date(request.toDate), 'dd MMM yyyy')}</span>
+                      <span className="text-sm text-gray-700">{safeFormatDate(request.toDate)}</span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="text-sm font-medium text-gray-800">{request.days}</span>
+                      <span className="text-sm font-medium text-gray-800">{request.days || 0}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="text-sm text-gray-700 max-w-xs truncate">{request.reason}</p>
+                      <p className="text-sm text-gray-700 max-w-xs truncate">{request.reason || 'No reason provided'}</p>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {getStatusBadge(request.status)}
@@ -869,7 +948,7 @@ const Leave = () => {
                     <div className="text-center">
                       <FiCalendar className="mx-auto text-gray-400 text-5xl mb-3" />
                       <p className="text-gray-500">No leave requests found</p>
-                      <p className="text-sm text-gray-400 mt-1">Try adjusting your filters or apply for a new leave</p>
+                      <p className="text-sm text-gray-400 mt-1">Click "Apply Leave" to create a new request</p>
                       <button
                         onClick={() => setShowApplyModal(true)}
                         className="mt-4 text-indigo-600 hover:text-indigo-700 font-medium"
@@ -909,16 +988,17 @@ const Leave = () => {
                 } else {
                   pageNumber = currentPage - 2 + index;
                 }
-
+                
                 if (pageNumber >= 1 && pageNumber <= totalPages) {
                   return (
                     <button
-                      key={index}
+                      key={`page-${pageNumber}`}
                       onClick={() => paginate(pageNumber)}
-                      className={`px-3 py-1 rounded-lg transition ${currentPage === pageNumber
-                        ? 'bg-indigo-600 text-white'
-                        : 'border border-gray-300 hover:bg-gray-50'
-                        }`}
+                      className={`px-3 py-1 rounded-lg transition ${
+                        currentPage === pageNumber
+                          ? 'bg-indigo-600 text-white'
+                          : 'border border-gray-300 hover:bg-gray-50'
+                      }`}
                     >
                       {pageNumber}
                     </button>
@@ -976,8 +1056,10 @@ const Leave = () => {
                       name="fromDate"
                       value={leaveForm.fromDate}
                       onChange={handleLeaveFormChange}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400"
+                      min={new Date().toISOString().split('T')[0]}
+                      className={`w-full px-3 py-2 border ${dateErrors.fromDate ? 'border-red-500' : 'border-gray-200'} rounded-xl focus:outline-none focus:border-indigo-400`}
                     />
+                    {dateErrors.fromDate && <p className="mt-1 text-xs text-red-500">{dateErrors.fromDate}</p>}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">To Date *</label>
@@ -986,8 +1068,10 @@ const Leave = () => {
                       name="toDate"
                       value={leaveForm.toDate}
                       onChange={handleLeaveFormChange}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400"
+                      min={leaveForm.fromDate || new Date().toISOString().split('T')[0]}
+                      className={`w-full px-3 py-2 border ${dateErrors.toDate ? 'border-red-500' : 'border-gray-200'} rounded-xl focus:outline-none focus:border-indigo-400`}
                     />
+                    {dateErrors.toDate && <p className="mt-1 text-xs text-red-500">{dateErrors.toDate}</p>}
                   </div>
                 </div>
                 <div>
@@ -1035,8 +1119,8 @@ const Leave = () => {
                 </button>
                 <button
                   onClick={submitLeaveApplication}
-                  disabled={loading}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition disabled:opacity-50 flex items-center gap-2"
+                  disabled={loading || !leaveForm.employeeId || !leaveForm.fromDate || !leaveForm.toDate || !leaveForm.reason || calculatedDays <= 0 || dateErrors.fromDate || dateErrors.toDate}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <FiSend size={16} />
                   {loading ? 'Submitting...' : 'Submit Leave'}
@@ -1066,31 +1150,31 @@ const Leave = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Employee Name</p>
-                    <p className="font-semibold text-gray-800">{selectedRequest.employeeName}</p>
+                    <p className="font-semibold text-gray-800">{selectedRequest.employeeName || 'Unknown'}</p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Employee ID</p>
-                    <p className="font-semibold text-gray-800">{selectedRequest.employeeId}</p>
+                    <p className="font-semibold text-gray-800">{selectedRequest.employeeId || 'N/A'}</p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Department</p>
-                    <p className="font-semibold text-gray-800">{selectedRequest.department}</p>
+                    <p className="font-semibold text-gray-800">{selectedRequest.department || 'N/A'}</p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Leave Type</p>
-                    <p className="font-semibold text-gray-800">{selectedRequest.type}</p>
+                    <p className="font-semibold text-gray-800">{selectedRequest.type || 'N/A'}</p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">From Date</p>
-                    <p className="font-semibold text-gray-800">{format(new Date(selectedRequest.fromDate), 'dd MMM yyyy')}</p>
+                    <p className="font-semibold text-gray-800">{safeFormatDate(selectedRequest.fromDate)}</p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">To Date</p>
-                    <p className="font-semibold text-gray-800">{format(new Date(selectedRequest.toDate), 'dd MMM yyyy')}</p>
+                    <p className="font-semibold text-gray-800">{safeFormatDate(selectedRequest.toDate)}</p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Days</p>
-                    <p className="font-semibold text-gray-800">{selectedRequest.days} Days</p>
+                    <p className="font-semibold text-gray-800">{selectedRequest.days || 0} Days</p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Status</p>
@@ -1099,7 +1183,7 @@ const Leave = () => {
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3">
                   <p className="text-xs text-gray-500">Reason</p>
-                  <p className="text-gray-800 mt-1">{selectedRequest.reason}</p>
+                  <p className="text-gray-800 mt-1">{selectedRequest.reason || 'No reason provided'}</p>
                 </div>
                 {selectedRequest.remarks && (
                   <div className="bg-gray-50 rounded-xl p-3">
@@ -1110,12 +1194,12 @@ const Leave = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Applied On</p>
-                    <p className="font-semibold text-gray-800">{selectedRequest.appliedOn}</p>
+                    <p className="font-semibold text-gray-800">{safeFormatDate(selectedRequest.appliedOn)}</p>
                   </div>
                   {selectedRequest.reviewedOn && (
                     <div className="bg-gray-50 rounded-xl p-3">
                       <p className="text-xs text-gray-500">Reviewed On</p>
-                      <p className="font-semibold text-gray-800">{selectedRequest.reviewedOn}</p>
+                      <p className="font-semibold text-gray-800">{safeFormatDate(selectedRequest.reviewedOn)}</p>
                     </div>
                   )}
                 </div>
