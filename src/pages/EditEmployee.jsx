@@ -513,13 +513,14 @@ const EditEmployee = () => {
                 label="Phone Number" 
                 name="phone" 
                 type="tel" 
-                 
+                 required
                 placeholder="+91 98765 43210"
                // icon={FiPhone}
               />
               <InputField 
                 label="Date of Birth" 
-                name="dateOfBirth" 
+                name="dateOfBirth"
+                required 
                 type="date" 
                 // icon={FiCalendar}
               />
@@ -567,8 +568,8 @@ const EditEmployee = () => {
           <div className="form-section">
             <h3 className="section-title">👨‍👩‍👧‍👦 Family Information</h3>
             <div className="form-grid">
-              <InputField label="Father's Name" name="fatherName" placeholder="Enter father's name" />
-              <InputField label="Father's Contact" name="fatherContact" placeholder="+1 234 567 8900" />
+              <InputField label="Father's Name" name="fatherName"  required placeholder="Enter father's name" />
+              <InputField label="Father's Contact" name="fatherContact" required placeholder="+1 234 567 8900" />
               <InputField label="Mother's Name" name="motherName" placeholder="Enter mother's name" />
               <InputField label="Mother's Contact" name="motherContact" placeholder="+1 234 567 8900" />
               <InputField label="Spouse Name" name="spouseName" placeholder="Enter spouse name" />
@@ -611,7 +612,7 @@ const EditEmployee = () => {
               <SelectField 
                 label="Department" 
                 name="department" 
-
+                
                 options={[
                   { value: 'Engineering', label: 'Engineering' },
                   { value: 'HR', label: 'Human Resources' },
@@ -624,8 +625,8 @@ const EditEmployee = () => {
               <InputField 
                 label="Position / Designation" 
                 name="position" 
-                
-                placeholder="Senior Developer"
+                required
+                placeholder="Senior manager"
               />
               <InputField label="Work Location" name="workLocation" placeholder="City, Office location" />
               <SelectField 
@@ -658,10 +659,10 @@ const EditEmployee = () => {
           <div className="form-section">
             <h3 className="section-title">💰 Salary & Bank Information</h3>
             <div className="form-grid">
-              <InputField label="Basic Salary (₹)" name="basicSalary" type="number" placeholder="50000" />
-              <InputField label="Current Salary (₹)" name="currentSalary" type="number" placeholder="50000" />
-              <InputField label="Previous Company" name="previousCompany" placeholder="Previous employer" />
-              <InputField label="Previous Salary (₹)" name="previousSalary" type="number" placeholder="45000" />
+              <InputField label="Basic Salary (₹)" name="basicSalary" type="number"  placeholder="50000" />
+              <InputField label="Current Salary (₹)" name="currentSalary" type="number" required placeholder="50000" />
+              <InputField label="Previous Company" name="previousCompany"  placeholder="Previous employer" />
+              <InputField label="Previous Salary (₹)" name="previousSalary" type="number"  placeholder="45000" />
             </div>
             
             <div className="mt-6">

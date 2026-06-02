@@ -10,8 +10,29 @@ const Header = ({ onMenuClick }) => {
   const [showSearchMobile, setShowSearchMobile] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
-  const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  
   const currentDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const [currentTime, setCurrentTime] = useState('');
+
+useEffect(() => {
+  const updateTime = () => {
+    const now = new Date();
+    setCurrentTime(
+      now.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      })
+    );
+  };
+
+  updateTime();
+  const timer = setInterval(updateTime, 1000);
+
+  return () => clearInterval(timer);
+}, []);
+
 
   useEffect(() => {
     const checkMobile = () => {
@@ -128,12 +149,12 @@ const Header = ({ onMenuClick }) => {
             ENG
           </button>
 
-          {/* Notifications */}
+          {/* Notifications *
           <button className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition">
             <FiBell className="text-lg md:text-xl" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
           </button>
-
+*/}
           {/* Profile Menu */}
           <div className="relative profile-menu-container">
             <button

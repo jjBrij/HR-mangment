@@ -68,7 +68,7 @@ const Sidebar = ({ onClose }) => {
         </button>
       </div>
 
-      {/* User Profile Section */}
+      {/* User Profile Section 
       <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-white">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-semibold">
@@ -81,7 +81,7 @@ const Sidebar = ({ onClose }) => {
           </div>
         </div>
       </div>
-
+*/}
       {/* Navigation Links */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         {navItems.map((item) => (
