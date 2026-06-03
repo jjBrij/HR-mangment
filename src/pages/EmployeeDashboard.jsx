@@ -471,11 +471,9 @@ const EmployeeDashboard = () => {
                                   <p className="text-xs text-gray-400">+{target.tasks.length - 3} more</p>
                                 )}
                               </div>
-                            ) : (
-                              <p className="text-sm text-gray-400">No tasks added</p>
-                            )}
+                            ) : null}
                             {target.completedAmount > 0 && (
-                              <p className="text-xs text-green-600 mt-1">Amount: {formatCurrency(target.completedAmount)}</p>
+                              <p className="text-xs(13px) text-green-600 mt-1">Amount: {formatCurrency(target.completedAmount)}</p>
                             )}
                           </div>
                         )}

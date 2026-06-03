@@ -128,28 +128,28 @@ const Performance = () => {
   const cleanupOrphanedTargets = () => {
     const storedEmployees = localStorage.getItem('employees');
     const storedTargets = localStorage.getItem('performanceTargets');
-    
+
     if (!storedTargets) return [];
-    
+
     let targetsList = JSON.parse(storedTargets);
-    
+
     if (!storedEmployees || JSON.parse(storedEmployees).length === 0) {
       localStorage.setItem('performanceTargets', JSON.stringify([]));
       return [];
     }
-    
+
     const employeesList = JSON.parse(storedEmployees);
     const validEmployeeIds = employeesList.map(emp => emp.employeeId || emp.id);
-    
+
     const cleanedTargets = targetsList.filter(target => {
       if (!target.employeeId) return false;
       const employeeExists = validEmployeeIds.includes(target.employeeId);
-      const hasValidName = target.employeeName && 
-                          target.employeeName !== 'Unknown' && 
-                          target.employeeName.trim() !== '';
+      const hasValidName = target.employeeName &&
+        target.employeeName !== 'Unknown' &&
+        target.employeeName.trim() !== '';
       return employeeExists && hasValidName;
     });
-    
+
     const updatedTargets = cleanedTargets.map(target => {
       const matchingEmployee = employeesList.find(emp => (emp.employeeId || emp.id) === target.employeeId);
       if (matchingEmployee) {
@@ -161,20 +161,20 @@ const Performance = () => {
       }
       return target;
     });
-    
+
     if (updatedTargets.length !== targetsList.length) {
       localStorage.setItem('performanceTargets', JSON.stringify(updatedTargets));
       console.log(`Cleaned up ${targetsList.length - updatedTargets.length} orphaned/invalid targets`);
     }
-    
+
     return updatedTargets;
   };
 
   const filterAvailableEmployees = (month) => {
-    const validEmployees = employees.filter(emp => 
+    const validEmployees = employees.filter(emp =>
       emp.name && emp.name.trim() !== '' && emp.name !== 'Unknown'
     );
-    
+
     const employeesWithTarget = targets
       .filter(t => t.month === month && t.employeeName !== 'Unknown')
       .map(t => t.employeeId);
@@ -189,10 +189,10 @@ const Performance = () => {
 
     if (storedEmployees) {
       const parsedEmployees = JSON.parse(storedEmployees);
-      employeeList = parsedEmployees.filter(emp => 
+      employeeList = parsedEmployees.filter(emp =>
         emp.name && emp.name.trim() !== '' && emp.name !== 'Unknown'
       );
-      
+
       if (employeeList.length !== parsedEmployees.length) {
         localStorage.setItem('employees', JSON.stringify(employeeList));
       }
@@ -208,9 +208,9 @@ const Performance = () => {
     let targetList = [];
 
     if (cleanedTargetsFromStorage && cleanedTargetsFromStorage.length > 0) {
-      targetList = cleanedTargetsFromStorage.filter(target => 
-        target.employeeName && 
-        target.employeeName !== 'Unknown' && 
+      targetList = cleanedTargetsFromStorage.filter(target =>
+        target.employeeName &&
+        target.employeeName !== 'Unknown' &&
         target.employeeName.trim() !== ''
       );
 
@@ -218,7 +218,7 @@ const Performance = () => {
         const matchingEmployee = employeeList.find(
           emp => (emp.employeeId || emp.id) === target.employeeId
         );
-        
+
         if (matchingEmployee) {
           return {
             ...target,
@@ -287,7 +287,7 @@ const Performance = () => {
 
   const calculateAttendancePercentage = (employeeId, month) => {
     if (!attendanceData.length) return 0;
-    
+
     const [year, monthNum] = month.split('-');
 
     const employeeAttendance = attendanceData.filter(record => {
@@ -421,11 +421,10 @@ const Performance = () => {
   const startEditing = (target) => {
     setEditingRow(target.id);
     setEditFormData({
-      currentTarget: target.currentTarget || 0,
-      completedTarget: target.completedTarget || 0,
-      previousTarget: target.previousTarget || 0,
-      userEnteredTarget: target.userEnteredTarget || 0
-    });
+  currentTarget: target.currentTarget || 0,
+  previousTarget: target.previousTarget || 0,
+  userEnteredTarget: target.userEnteredTarget || 0
+});
   };
 
   const handleEditChange = (e) => {
@@ -444,7 +443,7 @@ const Performance = () => {
         return {
           ...target,
           currentTarget: editFormData.currentTarget,
-          completedTarget: editFormData.completedTarget,
+          completedTarget: target.completedTarget,
           previousTarget: editFormData.previousTarget,
           attendance: attendance
         };
@@ -484,21 +483,14 @@ const Performance = () => {
 
     const finalCurrentTarget = userEnteredNum + previousMonthPending;
 
-    let completedTargetNum;
-    if (newTarget.completedTarget === '' || newTarget.completedTarget === null || newTarget.completedTarget === undefined) {
-      completedTargetNum = finalCurrentTarget;
-    } else {
-      completedTargetNum = Number(newTarget.completedTarget);
-      if (isNaN(completedTargetNum)) {
-        completedTargetNum = 0;
-      }
-    }
+    let completedTargetNum = 0;
+
 
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 500));
 
     let employee = employees.find(emp => emp.employeeId === newTarget.employeeId);
-    
+
     if (!employee) {
       const storedEmployees = localStorage.getItem('employees');
       if (storedEmployees) {
@@ -554,7 +546,9 @@ const Performance = () => {
     setLoading(false);
     setRefreshKey(prev => prev + 1);
 
-    alert(`Target added successfully for ${newTarget.month}!\n\nFinal Target Amount: ₹${finalCurrentTarget.toLocaleString()}\nCompleted Target: ₹${completedTargetNum.toLocaleString()}\nPending Target: ₹${(finalCurrentTarget - completedTargetNum).toLocaleString()}`);
+    alert(`Target added successfully for ${newTarget.month}!\n\nFinal Target Amount: 
+      ₹${finalCurrentTarget.toLocaleString()}\nCompleted Target: ₹${completedTargetNum.toLocaleString()}\nPending Target:
+       ₹${(finalCurrentTarget - completedTargetNum).toLocaleString()}`);
   };
 
   const deleteTarget = async (id) => {
@@ -576,7 +570,7 @@ const Performance = () => {
       alert('No performance targets found to sync');
       return;
     }
-    
+
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -597,7 +591,7 @@ const Performance = () => {
       alert('No data to export');
       return;
     }
-    
+
     const headers = ['Employee', 'Department', 'Attendance %', 'Current Target', 'Completed Target', 'Pending Target', 'Growth %', 'Performance'];
     const csvData = filteredTargets.map(target => {
       const currentTarget = target.currentTarget || 0;
@@ -652,28 +646,32 @@ const Performance = () => {
   };
 
   const performanceDistribution = [
-    { name: 'Excellent', value: targets.filter(t => {
+    {
+      name: 'Excellent', value: targets.filter(t => {
         if (t.month !== selectedMonth || t.employeeName === 'Unknown') return false;
         const completionRate = calculateCompletionRate(t.completedTarget, t.currentTarget);
         const score = calculatePerformanceScore(t.attendance || 0, completionRate);
         return score >= 90;
       }).length, color: '#10B981'
     },
-    { name: 'Good', value: targets.filter(t => {
+    {
+      name: 'Good', value: targets.filter(t => {
         if (t.month !== selectedMonth || t.employeeName === 'Unknown') return false;
         const completionRate = calculateCompletionRate(t.completedTarget, t.currentTarget);
         const score = calculatePerformanceScore(t.attendance || 0, completionRate);
         return score >= 75 && score < 90;
       }).length, color: '#3B82F6'
     },
-    { name: 'Average', value: targets.filter(t => {
+    {
+      name: 'Average', value: targets.filter(t => {
         if (t.month !== selectedMonth || t.employeeName === 'Unknown') return false;
         const completionRate = calculateCompletionRate(t.completedTarget, t.currentTarget);
         const score = calculatePerformanceScore(t.attendance || 0, completionRate);
         return score >= 60 && score < 75;
       }).length, color: '#F59E0B'
     },
-    { name: 'Needs Improvement', value: targets.filter(t => {
+    {
+      name: 'Needs Improvement', value: targets.filter(t => {
         if (t.month !== selectedMonth || t.employeeName === 'Unknown') return false;
         const completionRate = calculateCompletionRate(t.completedTarget, t.currentTarget);
         const score = calculatePerformanceScore(t.attendance || 0, completionRate);
@@ -1036,20 +1034,16 @@ const Performance = () => {
                               <span className="text-sm font-semibold text-gray-800">₹{currentTarget.toLocaleString()}</span>
                             )}
                           </td>
+
+
                           <td className="px-4 py-3 text-right">
-                            {editingRow === target.id ? (
-                              <input
-                                type="number"
-                                name="completedTarget"
-                                value={editFormData.completedTarget}
-                                onChange={handleEditChange}
-                                className="w-32 px-2 py-1 text-right border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-400"
-                                min="0"
-                              />
-                            ) : (
-                              <span className="text-sm font-semibold text-green-600">₹{completedTarget.toLocaleString()}</span>
-                            )}
+                            <span className="text-sm font-semibold text-green-600">
+                              ₹{completedTarget.toLocaleString()}
+                            </span>
                           </td>
+
+
+
                           <td className="px-4 py-3 text-right">
                             <span className="text-sm font-medium text-orange-600">₹{pendingTarget.toLocaleString()}</span>
                           </td>
@@ -1103,27 +1097,27 @@ const Performance = () => {
                             </div>
                           </td>
                         </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan="8" className="text-center py-12">
-                          <p className="text-gray-500">No valid performance data found for {selectedMonth}</p>
-                          <button
-                            onClick={() => {
-                              filterAvailableEmployees(selectedMonth);
-                              setShowAddModal(true);
-                            }}
-                            className="mt-3 text-indigo-600 hover:text-indigo-700 font-medium"
-                          >
-                            Add new target →
-                          </button>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan="8" className="text-center py-12">
+                        <p className="text-gray-500">No valid performance data found for {selectedMonth}</p>
+                        <button
+                          onClick={() => {
+                            filterAvailableEmployees(selectedMonth);
+                            setShowAddModal(true);
+                          }}
+                          className="mt-3 text-indigo-600 hover:text-indigo-700 font-medium"
+                        >
+                          Add new target →
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
             {/* Pagination */}
             {filteredTargets.filter(t => t.employeeName !== 'Unknown').length > 0 && (
@@ -1159,7 +1153,7 @@ const Performance = () => {
                           className={`px-3 py-1 rounded-lg transition ${currentPage === pageNumber
                             ? 'bg-indigo-600 text-white'
                             : 'border border-gray-300 hover:bg-gray-50'
-                          }`}
+                            }`}
                         >
                           {pageNumber}
                         </button>
@@ -1281,24 +1275,15 @@ const Performance = () => {
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Completed Target Amount (₹)</label>
-                  <input
-                    type="number"
-                    value={newTarget.completedTarget}
-                    onChange={(e) => handleCompletedTargetChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400"
-                    placeholder="Leave empty to auto-fill with final target"
-                    min="0"
-                    step="1000"
-                  />
-                  <p className="text-xs text-blue-600 mt-1">
-                    ℹ️ Leave empty to auto-fill with Final Target amount, or enter any number you want
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Examples: 0, 5000, 10000 - will be saved as-is
-                  </p>
-                </div>
+
+
+
+
+
+
+
+
+
               </div>
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
                 <button
