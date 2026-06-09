@@ -1,19 +1,14 @@
-// src/pages/Login.jsx
+// src/pages/Login.jsx - Complete working version
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  FiLogIn, 
-  FiMail, 
-  FiLock, 
-  FiEye, 
-  FiEyeOff, 
-  FiUser, 
-  FiBriefcase,
-  FiAlertCircle,
-  FiCheckCircle,
-  FiX
+  FiLogIn, FiUser, FiLock, FiEye, FiEyeOff, 
+  FiBriefcase, FiAlertCircle, FiCheckCircle, FiX, FiMail 
 } from 'react-icons/fi';
-import { login, isAuthenticated, initializeAuth } from '../services/authService';
+import { 
+  login, isAuthenticated, initializeAuth, 
+  getCurrentUser, mustChangePassword 
+} from '../services/authService';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -28,13 +23,48 @@ const Login = () => {
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
 
   useEffect(() => {
-    // Initialize auth data
+    // Clear any stale auth data when login page loads
+    const clearStaleData = () => {
+      const token = localStorage.getItem('access_token');
+      const user = getCurrentUser();
+      
+      // If there's a token but no user, or token seems invalid, clear everything
+      if (token && !user) {
+        localStorage.clear();
+      }
+    };
+    
+    clearStaleData();
     initializeAuth();
+    
+    // Prevent back button issues
+    window.history.pushState(null, '', window.location.href);
+    
+    const handlePopState = () => {
+      window.location.reload();
+    };
+    
+    window.addEventListener('popstate', handlePopState);
     
     // Check if already logged in
     if (isAuthenticated()) {
-      navigate('/');
+      const user = getCurrentUser();
+      const mustChange = mustChangePassword();
+      
+      console.log('Already authenticated, redirecting...', { user, mustChange });
+      
+      if (mustChange) {
+        navigate('/change-password');
+      } else if (user?.role === 'admin' || user?.role === 'hr_manager') {
+        navigate('/dashboard');
+      } else {
+        navigate('/employee-dashboard');
+      }
     }
+    
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, [navigate]);
 
   const showNotification = (type, message) => {
@@ -58,13 +88,31 @@ const Login = () => {
     if (!validateForm()) return;
     
     setLoading(true);
+    setErrors({});
+    
     try {
       const user = await login(userId, password);
-      showNotification('success', `Welcome back, ${user.name}!`);
-      setTimeout(() => {
-        navigate('/');
-      }, 500);
+      const mustChange = mustChangePassword();
+      
+
+      
+      showNotification('success', `Welcome back, ${user.first_name || user.name || userId}!`);
+      
+      if (mustChange) {
+        setTimeout(() => {
+          navigate('/change-password', { replace: true });
+        }, 500);
+      } else if (user.role === 'admin' || user.role === 'hr_manager') {
+        setTimeout(() => {
+          navigate('/', { replace: true });
+        }, 500);
+      } else {
+        setTimeout(() => {
+          navigate('/employee-dashboard', { replace: true });
+        }, 500);
+      }
     } catch (error) {
+      console.error('Login error:', error);
       showNotification('error', error.message);
       setErrors({ general: error.message });
     } finally {
@@ -164,14 +212,14 @@ const Login = () => {
             <div className="form-group">
               <label className="form-label">
                 <FiUser className="label-icon" />
-                User ID
+                Employee ID / Email
               </label>
               <input
                 type="text"
                 className={`form-input ${errors.userId ? 'error' : ''}`}
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                placeholder="Enter your User ID"
+                placeholder="Enter your Employee ID or Email"
                 disabled={loading}
               />
               {errors.userId && <span className="error-message">{errors.userId}</span>}

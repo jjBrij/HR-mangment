@@ -1,6 +1,7 @@
-// src/context/AppContext.jsx (Updated)
+// src/context/AppContext.jsx
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { employeeService, payrollService, leaveService, attendanceService } from '../services/dataService';
+import { api } from '../services/api';
+import { getCurrentUser } from '../services/authService';
 
 const AppContext = createContext();
 
@@ -13,131 +14,41 @@ export const useAppContext = () => {
 };
 
 export const AppProvider = ({ children }) => {
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [employees, setEmployees] = useState([]);
-  const [payroll, setPayroll] = useState([]);
-  const [leaveRequests, setLeaveRequests] = useState([]);
-  const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [performanceTargets, setPerformanceTargets] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const currentUser = getCurrentUser();
 
-  // Helper: Clean array
-  const cleanArray = useCallback((arr) => {
-    if (!Array.isArray(arr)) return [];
-    return arr.filter(item => {
-      if (item == null) return false;
-      if (typeof item !== 'object') return false;
-      return Object.keys(item).length > 0 && (item.id || item.employeeId);
-    });
-  }, []);
-
-  // Calculate performance score
-  const calculatePerformanceScore = (attendance, projectCompletion, taskEfficiency) => {
-    return (0.4 * attendance) + (0.4 * projectCompletion) + (0.2 * taskEfficiency);
-  };
-
-  // Get Employee of the Month (Top performer)
-  const getEmployeeOfTheMonth = useCallback(() => {
-    const targets = performanceTargets;
-    if (!targets || targets.length === 0) return null;
-    
-    // Get current month's targets
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    const currentMonthTargets = targets.filter(t => t.month === currentMonth);
-    
-    if (currentMonthTargets.length === 0) return null;
-    
-    // Calculate scores and find top performer
-    const employeesWithScore = currentMonthTargets.map(target => {
-      const score = calculatePerformanceScore(
-        target.attendance || 0, 
-        target.projectCompletion || 0, 
-        target.taskEfficiency || 0
-      );
-      return {
-        ...target,
-        performanceScore: score
-      };
-    });
-    
-    const sorted = employeesWithScore.sort((a, b) => b.performanceScore - a.performanceScore);
-    const topEmployee = sorted[0];
-    
-    if (topEmployee) {
-      return {
-        name: topEmployee.employeeName,
-        employeeId: topEmployee.employeeId,
-        department: topEmployee.department,
-        score: topEmployee.performanceScore.toFixed(0),
-        month: currentMonth
-      };
-    }
-    
-    return null;
-  }, [performanceTargets]);
-
-  // Calculate stats from cleaned data
-  const calculateStats = useCallback((employeeData, leaveData, payrollData) => {
-    const validEmployees = cleanArray(employeeData);
-    const validLeaves = cleanArray(leaveData);
-    const validPayroll = cleanArray(payrollData);
-
-    const activeEmployees = validEmployees.filter(e => e.status === 'Active').length;
-    const onLeaveNow = validLeaves.filter(l => 
-      l.status === 'Approved' && 
-      new Date(l.startDate) <= new Date() && 
-      new Date(l.endDate) >= new Date()
-    ).length;
-
-    const monthlyPayroll = validPayroll
-      .filter(p => p.status === 'Processed')
-      .reduce((sum, p) => sum + (Number(p.netSalary) || 0), 0);
-
-    return {
-      totalEmployees: validEmployees.length,
-      activeEmployees,
-      onLeave: onLeaveNow,
-      payroll: monthlyPayroll,
-      attendance: validEmployees.length > 0 ? Math.round(((validEmployees.length - onLeaveNow) / validEmployees.length) * 100) : 0,
-      monthlyGrowth: 0
-    };
-  }, [cleanArray]);
-
-  // Load all data
-  const loadAllData = useCallback(() => {
+  const loadAllData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
-      const employeeData = employeeService.getAll();
-      const payrollData = payrollService.getAll();
-      const leaveData = leaveService.getAll();
-      const attendanceData = attendanceService.getAll();
-      const performanceData = localStorage.getItem('performanceTargets');
-      let performanceList = performanceData ? JSON.parse(performanceData) : [];
+      // Load employees
+      const employeesRes = await api.get('/api/employees/');
+      const employeesList = Array.isArray(employeesRes) ? employeesRes :
+        (employeesRes.results ? employeesRes.results : []);
+      setEmployees(employeesList);
+      console.log('Employees loaded:', employeesList.length);
 
-      // Clean data
-      const cleanEmployees = cleanArray(employeeData);
-      const cleanPayroll = cleanArray(payrollData);
-      const cleanLeaves = cleanArray(leaveData);
-      const cleanAttendance = cleanArray(attendanceData);
-      const cleanPerformance = cleanArray(performanceList);
+      // Load performance targets
+      const performanceRes = await api.get('/api/performance/targets/');
+      const targetsList = Array.isArray(performanceRes) ? performanceRes :
+        (performanceRes.results ? performanceRes.results : []);
+      setPerformanceTargets(targetsList);
+      console.log('Performance targets loaded:', targetsList.length);
 
-      setEmployees(cleanEmployees);
-      setPayroll(cleanPayroll);
-      setLeaveRequests(cleanLeaves);
-      setAttendanceRecords(cleanAttendance);
-      setPerformanceTargets(cleanPerformance);
+      // Load leave requests
+      //const leaveRes = await api.get('/api/leave/requests/');
+      //const leaveList = Array.isArray(leaveRes) ? leaveRes : 
+      //        (leaveRes.results ? leaveRes.results : []);
+      // setLeaveRequests(leaveList);
+      // console.log('Leave requests loaded:', leaveList.length);
+      setLeaveRequests([]);
 
-      // Calculate stats
-      const stats = calculateStats(cleanEmployees, cleanLeaves, cleanPayroll);
-      const employeeOfMonth = getEmployeeOfTheMonth();
-      
-      setDashboardStats({
-        ...stats,
-        employeeOfMonth: employeeOfMonth
-      });
 
     } catch (err) {
       console.error('Error loading data:', err);
@@ -145,157 +56,136 @@ export const AppProvider = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [cleanArray, calculateStats, getEmployeeOfTheMonth]);
+  }, []);
 
-  // Initial load + refresh
   useEffect(() => {
     loadAllData();
-  }, [refreshTrigger, loadAllData]);
+  }, [refreshTrigger]);
 
-  // Listen for storage events
-  useEffect(() => {
-    const handleStorageChange = (e) => {
-      if (e.key && (e.key.includes('employees') || e.key.includes('payroll') || e.key.includes('leave') || e.key.includes('performance'))) {
-        setRefreshTrigger(prev => prev + 1);
-      }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  const refreshData = useCallback(() => {
+  const refreshData = () => {
     setRefreshTrigger(prev => prev + 1);
-  }, []);
+  };
 
-  // CRUD Operations
-  const addEmployee = useCallback((employeeData) => {
-    try {
-      const newEmployee = employeeService.add(employeeData);
-      refreshData();
-      return newEmployee;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  }, [refreshData]);
+  // Calculate dashboard statistics from real data
+  const getDashboardStats = useCallback(() => {
+    const totalEmployees = employees.length;
+    const activeEmployees = employees.filter(emp => emp.status === 'Active').length;
 
-  const updateEmployee = useCallback((id, employeeData) => {
-    try {
-      const updated = employeeService.update(id, employeeData);
-      refreshData();
-      return updated;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  }, [refreshData]);
+    // Calculate on leave today
+    const today = new Date().toISOString().split('T')[0];
+    const onLeaveToday = leaveRequests.filter(leave =>
+      leave.status === 'Approved' &&
+      leave.from_date <= today &&
+      leave.to_date >= today
+    ).length;
 
-  const deleteEmployee = useCallback((id) => {
-    try {
-      const remaining = employeeService.delete(id);
-      refreshData();
-      return remaining;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  }, [refreshData]);
+    // Calculate new hires this month
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const newHires = employees.filter(emp => {
+      const joinDate = new Date(emp.joining_date);
+      return joinDate.getMonth() === currentMonth && joinDate.getFullYear() === currentYear;
+    }).length;
 
-  const updatePayrollStatus = useCallback((id, status) => {
-    try {
-      const updated = payrollService.updateStatus(id, status);
-      refreshData();
-      return updated;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  }, [refreshData]);
+    // Calculate attendance
+    const attendance = totalEmployees > 0
+      ? Math.round(((totalEmployees - onLeaveToday) / totalEmployees) * 100)
+      : 0;
 
-  const addLeaveRequest = useCallback((leaveData) => {
-    try {
-      const newLeave = leaveService.addRequest(leaveData);
-      refreshData();
-      return newLeave;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  }, [refreshData]);
+    return {
+      totalEmployees,
+      activeEmployees,
+      onLeave: onLeaveToday,
+      newHires,
+      attendance,
+      monthlyGrowth: totalEmployees > 0 ? Math.round((newHires / totalEmployees) * 100) : 0
+    };
+  }, [employees, leaveRequests]);
 
-  const updateLeaveStatus = useCallback((id, status, remarks) => {
-    try {
-      const updated = leaveService.updateStatus(id, status, remarks);
-      refreshData();
-      return updated;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  }, [refreshData]);
+  // Get current employee (logged in user)
+  const getCurrentEmployee = useCallback(() => {
+    if (!currentUser) return null;
+    return employees.find(emp => emp.employee_id === currentUser.employee_id);
+  }, [employees, currentUser]);
 
-  const addAttendanceRecord = useCallback((record) => {
-    try {
-      const newRecord = attendanceService.addRecord(record);
-      refreshData();
-      return newRecord;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  }, [refreshData]);
+  // Get performance target for employee
+  const getPerformanceTarget = useCallback((employeeId, month) => {
+    return performanceTargets.find(t => t.employee_id === employeeId && t.month === month);
+  }, [performanceTargets]);
 
-  // Derived state
-  const activeEmployees = useMemo(() => 
-    employees.filter(e => e.status === 'Active'), 
-    [employees]
-  );
+  // Get recent activities
+  const getRecentActivities = useCallback(() => {
+    const activities = [];
 
-  const pendingLeaveRequests = useMemo(() => 
-    leaveRequests.filter(l => l.status === 'Pending'),
-    [leaveRequests]
-  );
+    // Add leave activities
+    leaveRequests.slice(0, 3).forEach(leave => {
+      activities.push({
+        id: `leave-${leave.id}`,
+        title: `${leave.employee_name || 'Employee'} has applied for leave`,
+        date: new Date(leave.applied_on || leave.from_date).toLocaleDateString(),
+        description: leave.leave_type || leave.type,
+        type: 'leave'
+      });
+    });
 
-  const [dashboardStats, setDashboardStats] = useState({
-    totalEmployees: 0,
-    activeEmployees: 0,
-    onLeave: 0,
-    payroll: 0,
-    attendance: 0,
-    monthlyGrowth: 0,
-    employeeOfMonth: null
-  });
+    // Add new hire activities
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const contextValue = useMemo(() => ({
+    const recentHires = employees.filter(emp => {
+      const joinDate = new Date(emp.joining_date);
+      return joinDate >= thirtyDaysAgo;
+    }).slice(0, 2);
+
+    recentHires.forEach(emp => {
+      activities.push({
+        id: `hire-${emp.id}`,
+        title: `${emp.name} has joined the company`,
+        date: new Date(emp.joining_date).toLocaleDateString(),
+        description: emp.position,
+        type: 'hire'
+      });
+    });
+
+    return activities.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+  }, [employees, leaveRequests]);
+
+  // Get upcoming birthdays
+  const getUpcomingBirthdays = useCallback(() => {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth();
+    const currentDay = currentDate.getDate();
+
+    const birthdays = employees.filter(emp => {
+      if (!emp.date_of_birth) return false;
+      const birthDate = new Date(emp.date_of_birth);
+      const birthMonth = birthDate.getMonth();
+      const birthDay = birthDate.getDate();
+
+      if (birthMonth === currentMonth && birthDay >= currentDay) return true;
+      if (birthMonth === currentMonth + 1 && birthDay <= currentDay + 30) return true;
+      return false;
+    }).slice(0, 3);
+
+    return birthdays;
+  }, [employees]);
+
+  const value = {
     employees,
-    payroll,
-    leaveRequests,
-    attendanceRecords,
     performanceTargets,
-    dashboardStats,
+    leaveRequests,
     isLoading,
     error,
-    activeEmployees,
-    pendingLeaveRequests,
     refreshData,
-    addEmployee,
-    updateEmployee,
-    deleteEmployee,
-    updatePayrollStatus,
-    addLeaveRequest,
-    updateLeaveStatus,
-    addAttendanceRecord,
-    clearError: () => setError(null)
-  }), [
-    employees, payroll, leaveRequests, attendanceRecords, performanceTargets, dashboardStats,
-    isLoading, error, activeEmployees, pendingLeaveRequests,
-    refreshData, addEmployee, updateEmployee, deleteEmployee,
-    updatePayrollStatus, addLeaveRequest, updateLeaveStatus, addAttendanceRecord
-  ]);
+    getDashboardStats,
+    getCurrentEmployee,
+    getPerformanceTarget,
+    getRecentActivities,
+    getUpcomingBirthdays,
+  };
 
   return (
-    <AppContext.Provider value={contextValue}>
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );

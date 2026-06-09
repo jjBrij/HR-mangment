@@ -1,4 +1,4 @@
-// src/pages/EmployeeDashboard.jsx (Complete Fixed Version - No JSX Errors)
+// src/pages/EmployeeDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import {
   FiTarget,
@@ -17,11 +17,11 @@ import {
   FiPhone,
   FiBriefcase,
   FiMapPin,
-  FiCheckSquare,
-  FiPlus
 } from 'react-icons/fi';
 import { format, startOfMonth, eachDayOfInterval, startOfToday, isSameDay, endOfMonth } from 'date-fns';
 import { useAppContext } from '../context/AppContext';
+import { api } from '../services/api';
+import { getCurrentUser } from '../services/authService';
 
 const EmployeeDashboard = () => {
   const { employees: globalEmployees, refreshData, performanceTargets } = useAppContext();
@@ -39,154 +39,142 @@ const EmployeeDashboard = () => {
     pendingTarget: 0,
     completionRate: 0
   });
-  const [newTask, setNewTask] = useState('');
+  const [performanceTarget, setPerformanceTarget] = useState(null);
 
+  // Load employee data
   useEffect(() => {
     loadEmployeeData();
   }, []);
 
+  // Load daily targets and performance when employee changes
   useEffect(() => {
     if (currentEmployee) {
       loadDailyTargets();
-      syncWithPerformanceTarget();
+      loadPerformanceTarget();
     }
   }, [currentEmployee, selectedMonth, performanceTargets]);
 
-  const loadEmployeeData = () => {
-    const loggedInUser = sessionStorage.getItem('loggedInEmployee');
-    let employee = null;
-
-    if (loggedInUser) {
-      employee = JSON.parse(loggedInUser);
-    } else if (globalEmployees && globalEmployees.length > 0) {
-      employee = globalEmployees[0];
-      sessionStorage.setItem('loggedInEmployee', JSON.stringify(employee));
+  const loadEmployeeData = async () => {
+    try {
+      const employee = await api.get('/api/employees/me/');
+      console.log("Employee:", employee);
+      setCurrentEmployee(employee);
+      sessionStorage.setItem(
+        'loggedInEmployee',
+        JSON.stringify(employee)
+      );
+    } catch (error) {
+      console.error('Error loading employee:', error);
     }
-
-    setCurrentEmployee(employee);
   };
 
-  const syncWithPerformanceTarget = () => {
-    if (!currentEmployee || !performanceTargets) return;
+  const loadPerformanceTarget = async() => {
+    if (!currentEmployee) return;
 
-    const performanceTarget = performanceTargets.find(
-      t => t.employeeId === currentEmployee.employeeId && t.month === selectedMonth
+    // Find performance target for current employee and selected month
+    const target = await api.get(
+      `/api/performance/targets/my_target/?month=${selectedMonth}`
     );
 
-    if (performanceTarget) {
-      const totalTarget = performanceTarget.currentTarget || 0;
+    console.log("TARGET:", target);
+    
+    setPerformanceTarget(target);
+    
+    if (target) {
+      const totalTarget = target.current_target || 0;
+      const completedTarget = target.completed_target || 0;
+      const pendingTarget = totalTarget - completedTarget;
+      const completionRate = totalTarget > 0 ? (completedTarget / totalTarget) * 100 : 0;
+      
+      setStatistics({
+        totalTarget,
+        completedTarget,
+        pendingTarget: pendingTarget > 0 ? pendingTarget : 0,
+        completionRate
+      });
+    } else {
+      setStatistics({
+        totalTarget: 0,
+        completedTarget: 0,
+        pendingTarget: 0,
+        completionRate: 0
+      });
+    }
+  };
+
+  const loadDailyTargets = async () => {
+    if (!currentEmployee) return;
+    
+    try {
+      // Fetch daily targets from API
+      const response = await api.get(
+        `/api/performance/daily/?employee=${currentEmployee.id}&month=${selectedMonth}`
+      );
+      
+      console.log("DAILY TARGETS API RESPONSE:", response);
+
+      let targets = Array.isArray(response)
+        ? response
+        : (response.results || []);
+
+      console.log("PARSED TARGETS:", targets);
+      
+      // Generate missing dates for the month
+      const startDate = startOfMonth(new Date(selectedMonth + '-01'));
+      const currentDate = new Date();
+      let endDate;
+      
+      if (format(currentDate, 'yyyy-MM') === selectedMonth) {
+        endDate = currentDate;
+      } else {
+        endDate = endOfMonth(startDate);
+      }
+      
+      const daysInMonth = eachDayOfInterval({ start: startDate, end: endDate });
+      const existingDates = targets.map(t => t.date);
+      const missingTargets = [];
+      
+      daysInMonth.forEach(date => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        if (!existingDates.includes(dateStr)) {
+          missingTargets.push({
+            id: `${currentEmployee.employee_id}-${dateStr}`,
+            employee_id: currentEmployee.employee_id,
+            employee_name: currentEmployee.name,
+            date: dateStr,
+            completed_amount: 0,
+            tasks: [],
+            status: 'Pending'
+          });
+        }
+      });
+      
+      const allTargets = [...targets, ...missingTargets];
+      allTargets.sort((a, b) => new Date(a.date) - new Date(b.date));
+      
+      setDailyTargets(allTargets);
+      setFilteredTargets([...allTargets].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      
+      // Calculate total completed from daily targets
+      const totalCompleted = allTargets.reduce((sum, t) => sum + (t.completed_amount || 0), 0);
+      
+      // Update statistics with completed target
       setStatistics(prev => ({
         ...prev,
-        totalTarget: totalTarget,
-        pendingTarget: totalTarget - prev.completedTarget,
-        completionRate: totalTarget > 0 ? (prev.completedTarget / totalTarget) * 100 : 0
+        completedTarget: totalCompleted,
+        pendingTarget: prev.totalTarget - totalCompleted,
+        completionRate: prev.totalTarget > 0 ? (totalCompleted / prev.totalTarget) * 100 : 0
       }));
-    }
-  };
-
-  const loadDailyTargets = () => {
-    const storedTargets = localStorage.getItem('dailyTargets');
-    let targets = [];
-
-    if (storedTargets) {
-      targets = JSON.parse(storedTargets);
-    }
-
-    const employeeTargets = targets.filter(t =>
-      t.employeeId === currentEmployee.employeeId &&
-      t.month === selectedMonth
-    );
-
-    const startDate = startOfMonth(new Date(selectedMonth + '-01'));
-    const currentDate = new Date();
-    let endDate;
-
-    if (format(currentDate, 'yyyy-MM') === selectedMonth) {
-      endDate = currentDate;
-    } else {
-      endDate = endOfMonth(startDate);
-    }
-
-    const daysInMonth = eachDayOfInterval({ start: startDate, end: endDate });
-    const existingDates = employeeTargets.map(t => t.date);
-    const missingTargets = [];
-
-    daysInMonth.forEach(date => {
-      const dateStr = format(date, 'yyyy-MM-dd');
-      if (!existingDates.includes(dateStr)) {
-        missingTargets.push({
-          id: `${currentEmployee.employeeId}-${dateStr}`,
-          employeeId: currentEmployee.employeeId,
-          employeeName: currentEmployee.name,
-          date: dateStr,
-          completedAmount: 0,
-          tasks: [],
-          status: 'Pending',
-          month: selectedMonth,
-          createdAt: new Date().toISOString(),
-          updatedAt: null
-        });
-      }
-    });
-
-    const allTargets = [...employeeTargets, ...missingTargets];
-    allTargets.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    setDailyTargets(allTargets);
-    calculateStatistics(allTargets);
-    setFilteredTargets([...allTargets].sort((a, b) => new Date(b.date) - new Date(a.date)));
-  };
-
-  const calculateStatistics = (targets) => {
-    const completedTarget = targets.reduce((sum, t) => sum + (t.completedAmount || 0), 0);
-
-    let totalTarget = 0;
-    if (performanceTargets && currentEmployee) {
-      const performanceTarget = performanceTargets.find(
-        t => t.employeeId === currentEmployee.employeeId && t.month === selectedMonth
-      );
-      totalTarget = performanceTarget?.currentTarget || 0;
-    }
-
-    const pendingTarget = totalTarget - completedTarget;
-    const completionRate = totalTarget > 0 ? (completedTarget / totalTarget) * 100 : 0;
-
-    setStatistics({
-      totalTarget,
-      completedTarget,
-      pendingTarget: pendingTarget > 0 ? pendingTarget : 0,
-      completionRate: completionRate
-    });
-
-    syncCompletedTargetToPerformance(completedTarget);
-  };
-
-  const syncCompletedTargetToPerformance = (completedTarget) => {
-    if (!currentEmployee || !performanceTargets) return;
-
-    const storedPerformanceTargets = localStorage.getItem('performanceTargets');
-    if (!storedPerformanceTargets) return;
-
-    let performanceList = JSON.parse(storedPerformanceTargets);
-    const index = performanceList.findIndex(
-      t => t.employeeId === currentEmployee.employeeId && t.month === selectedMonth
-    );
-
-    if (index !== -1) {
-      performanceList[index].completedTarget = completedTarget;
-      performanceList[index].updatedAt = new Date().toISOString();
-      localStorage.setItem('performanceTargets', JSON.stringify(performanceList));
-
-      if (refreshData) {
-        refreshData();
-      }
+      
+    } catch (error) {
+      console.error('Error loading daily targets:', error);
     }
   };
 
   const startEditing = (target) => {
     setEditingTarget(target.id);
     setEditFormData({
-      completedAmount: target.completedAmount || 0
+      completed_amount: target.completed_amount || 0
     });
   };
 
@@ -198,53 +186,61 @@ const EmployeeDashboard = () => {
 
   const saveEdit = async (id) => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    try {
+      const currentTarget = dailyTargets.find(t => t.id === id);
 
-    const storedTargets = localStorage.getItem('dailyTargets');
-    let allTargets = storedTargets ? JSON.parse(storedTargets) : [];
+      console.log('TARGET ID:', id);
+      console.log('CURRENT TARGET:', currentTarget);
+      
+      // 💎 1. Capture the amount cleanly
+      const submittedAmount = Number(editFormData.completed_amount);
 
-    const existingIndex = allTargets.findIndex(t => t.id === id);
-    const currentTarget = dailyTargets.find(t => t.id === id);
-
-    const updatedTarget = {
-      ...currentTarget,
-      completedAmount: editFormData.completedAmount,
-      tasks: editFormData.tasks || currentTarget.tasks || [],
-      status: editFormData.completedAmount > 0 ? 'Completed' : 'Pending',
-      updatedAt: new Date().toISOString()
-    };
-
-    if (existingIndex !== -1) {
-      allTargets[existingIndex] = updatedTarget;
-    } else {
-      allTargets.push(updatedTarget);
-    }
-
-    localStorage.setItem('dailyTargets', JSON.stringify(allTargets));
-
-    const updatedDailyTargets = dailyTargets.map(t =>
-      t.id === id ? updatedTarget : t
-    );
-
-    setDailyTargets(updatedDailyTargets);
-    calculateStatistics(updatedDailyTargets);
-    setFilteredTargets([...updatedDailyTargets].sort((a, b) => new Date(b.date) - new Date(a.date)));
-
-    setEditingTarget(null);
-    setEditFormData({});
-    setNewTask('');
-    setLoading(false);
-    alert('Daily target updated successfully!');
-
-    if (refreshData) {
-      refreshData();
+      // 💎 2. Clear UI state immediately to unlock the component BEFORE awaiting network requests
+      setEditingTarget(null);
+      setEditFormData({});
+      
+      // 3. Update daily target via API
+      if (String(id).includes('-')) {
+        // CREATE (First time saving)
+        await api.post('/api/performance/daily/', {
+          employee_id: currentEmployee.employee_id, 
+          date: currentTarget.date,
+          completed_amount: submittedAmount
+        });
+      } else {
+        // UPDATE (Infinite subsequent saves)
+        // 💎 Changed to PATCH (partial update) and included the employee_id just to be safe
+        await api.patch(`/api/performance/daily/${id}/`, {
+          employee_id: currentEmployee.employee_id, 
+          completed_amount: submittedAmount,
+          date: currentTarget.date
+        });
+      }
+      
+      // 4. Refresh data
+      await loadDailyTargets();
+      await loadPerformanceTarget();
+      
+      alert('Daily target updated successfully!');
+      
+      if (refreshData) {
+        refreshData();
+      }
+    } catch (error) {
+      console.error('Error updating daily target:', error);
+      alert(error.response?.data?.error || 'Failed to update target');
+      
+      // If it fails, we should revert the UI clearing
+      setEditingTarget(id); 
+    } finally {
+      setLoading(false);
     }
   };
 
   const cancelEditing = () => {
     setEditingTarget(null);
     setEditFormData({});
-    setNewTask('');
   };
 
   const getProgressColor = (percentage) => {
@@ -271,6 +267,10 @@ const EmployeeDashboard = () => {
   };
 
   if (!currentEmployee) {
+    console.log("Current Employee:", currentEmployee);
+  }
+
+  if (!currentEmployee) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -288,7 +288,7 @@ const EmployeeDashboard = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center text-3xl font-bold">
-              {currentEmployee.name?.charAt(0)}
+              {currentEmployee.name?.charAt(0) || 'E'}
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold">{currentEmployee.name}</h1>
@@ -296,11 +296,16 @@ const EmployeeDashboard = () => {
               <div className="flex flex-wrap gap-4 mt-2 text-sm text-indigo-200">
                 <span className="flex items-center gap-1"><FiMail size={14} /> {currentEmployee.email}</span>
                 <span className="flex items-center gap-1"><FiPhone size={14} /> {currentEmployee.phone || 'Not provided'}</span>
-                <span className="flex items-center gap-1"><FiMapPin size={14} /> {currentEmployee.workLocation || 'Office'}</span>
+                <span className="flex items-center gap-1"><FiMapPin size={14} /> {currentEmployee.work_location || 'Office'}</span>
               </div>
             </div>
           </div>
-          
+          <div className="text-center md:text-right">
+            <p className="text-sm opacity-80">Employee ID</p>
+            <p className="text-xl font-mono">{currentEmployee.employee_id}</p>
+            <p className="text-sm opacity-80 mt-2">Joining Date</p>
+            <p>{currentEmployee.joining_date || 'N/A'}</p>
+          </div>
         </div>
       </div>
 
@@ -417,7 +422,7 @@ const EmployeeDashboard = () => {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Daily Tasks</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Completed Amount</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Action</th>
               </tr>
@@ -428,6 +433,7 @@ const EmployeeDashboard = () => {
                   const targetDate = new Date(target.date);
                   const isToday = isEditable(target.date);
                   const dayName = getDayName(target.date);
+                  const progress = statistics.totalTarget > 0 ? (target.completed_amount / statistics.totalTarget) * 100 : 0;
 
                   return (
                     <tr key={target.id} className="hover:bg-gray-50 transition">
@@ -441,45 +447,25 @@ const EmployeeDashboard = () => {
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 text-center">
                         {editingTarget === target.id && isToday ? (
-                          <div>
-                            <label className="text-xs text-gray-500">Completed Amount (₹)</label>
-                            <input
-                              type="number"
-                              name="completedAmount"
-                              value={editFormData.completedAmount || ''}
-                              onChange={handleEditChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500"
-                              min="0"
-                              placeholder="Enter amount"
-                            />
-                          </div>
+                          <input
+                            type="number"
+                            name="completed_amount"
+                            value={editFormData.completed_amount || ''}
+                            onChange={handleEditChange}
+                            className="w-32 px-2 py-1 text-center border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500"
+                            min="0"
+                            placeholder="Amount"
+                          />
                         ) : (
-                          <div>
-                            {target.tasks && target.tasks.length > 0 ? (
-                              <div className="space-y-1">
-                                {target.tasks.slice(0, 3).map((task) => (
-                                  <div key={task.id} className="flex items-center gap-2">
-                                    <FiCheckSquare className={`text-xs ${task.completed ? 'text-green-500' : 'text-gray-400'}`} />
-                                    <span className={`text-xs ${task.completed ? 'line-through text-gray-400' : 'text-gray-600'}`}>
-                                      {task.text.length > 30 ? task.text.substring(0, 30) + '...' : task.text}
-                                    </span>
-                                  </div>
-                                ))}
-                                {target.tasks.length > 3 && (
-                                  <p className="text-xs text-gray-400">+{target.tasks.length - 3} more</p>
-                                )}
-                              </div>
-                            ) : null}
-                            {target.completedAmount > 0 && (
-                              <p className="text-xs(13px) text-green-600 mt-1">Amount: {formatCurrency(target.completedAmount)}</p>
-                            )}
-                          </div>
+                          <span className="text-sm font-medium text-green-600">
+                            {formatCurrency(target.completed_amount)}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {target.completedAmount > 0 ? (
+                        {target.completed_amount > 0 ? (
                           <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
                             <FiCheckCircle className="mr-1" size={12} /> Completed
                           </span>
@@ -583,9 +569,8 @@ const EmployeeDashboard = () => {
             <h4 className="font-medium text-blue-800">How Daily Targets Work</h4>
             <p className="text-sm text-blue-700 mt-1">
               • You can only edit today's date. Past dates are locked.<br />
-              • Add tasks for the day and mark them as completed.<br />
               • Enter the amount achieved for today.<br />
-              • Your progress automatically syncs with the Performance dashboard.
+              • Your progress automatically syncs with your performance dashboard.
             </p>
           </div>
         </div>

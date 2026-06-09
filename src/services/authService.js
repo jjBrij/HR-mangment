@@ -1,224 +1,119 @@
 // src/services/authService.js
-// Authentication service for HRMS
+import { api, setTokens, clearTokens, getAccessToken } from './api';
 
-// Storage keys
-const STORAGE_KEYS = {
-  USERS: 'hrms_users',
-  CURRENT_USER: 'hrms_current_user',
-  RESET_TOKENS: 'hrms_reset_tokens'
-};
-
-// Initialize default admin user
-export const initializeAuth = () => {
-  const users = localStorage.getItem(STORAGE_KEYS.USERS);
-  if (!users) {
-    // Create default admin user (password is 'admin123' - in production, this should be hashed)
-    const defaultUsers = [
-      {
-        id: 1,
-        userId: 'ADMIN001',
-        email: 'admin@hrms.com',
-        password: btoa('admin123'), // Simple base64 encoding (in production, use proper hashing)
-        name: 'Administrator',
-        role: 'admin',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 2,
-        userId: 'EMP001',
-        email: 'john.smith@demo.com',
-        password: btoa('employee123'),
-        name: 'John Smith',
-        role: 'employee',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 3,
-        userId: 'EMP002',
-        email: 'sarah.j@demo.com',
-        password: btoa('employee123'),
-        name: 'Sarah Johnson',
-        role: 'employee',
-        createdAt: new Date().toISOString()
-      }
-    ];
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(defaultUsers));
+// Login
+export const login = async (employeeId, password) => {
+  try {
+    clearTokens();
+    
+    // Use /api/auth/login/ (without double /api)
+    const data = await api.post('/api/auth/login/', {
+      employee_id: employeeId,
+      password: password,
+    });
+    
+    if (data.access) {
+      setTokens(data.access, data.refresh);
+    }
+    
+    if (data.user) {
+      localStorage.setItem('current_user', JSON.stringify(data.user));
+    }
+    
+    if (data.must_change_password !== undefined) {
+      localStorage.setItem('must_change_password', data.must_change_password);
+    }
+    
+    return {
+      ...data.user,
+      mustChangePassword: data.must_change_password,
+    };
+  } catch (error) {
+    console.error('Login error:', error);
+    throw error;
   }
 };
 
-// Get all users
-export const getUsers = () => {
-  const users = localStorage.getItem(STORAGE_KEYS.USERS);
-  return users ? JSON.parse(users) : [];
-};
-
-// Find user by email
-export const findUserByEmail = (email) => {
-  const users = getUsers();
-  return users.find(user => user.email.toLowerCase() === email.toLowerCase());
-};
-
-// Find user by userId
-export const findUserByUserId = (userId) => {
-  const users = getUsers();
-  return users.find(user => user.userId === userId);
-};
-
-// Login function
-export const login = async (userId, password) => {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 800));
-  
-  const users = getUsers();
-  const user = users.find(u => u.userId === userId);
-  
-  if (!user) {
-    throw new Error('Invalid User ID or Password');
+// Logout
+export const logout = async () => {
+  try {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      await api.post('/api/auth/logout/', { refresh: refreshToken });
+    }
+  } catch (error) {
+    console.error('Logout error:', error);
+  } finally {
+    clearTokens();
+    window.location.href = '/login';
   }
-  
-  // Check password (decode from base64 - in production, use proper hashing)
-  const decodedPassword = atob(user.password);
-  if (decodedPassword !== password) {
-    throw new Error('Invalid User ID or Password');
-  }
-  
-  // Store current user (excluding password)
-  const { password: _, ...currentUser } = user;
-  localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
-  
-  return currentUser;
-};
-
-// Logout function
-export const logout = () => {
-  localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-  sessionStorage.clear();
 };
 
 // Get current user
 export const getCurrentUser = () => {
-  const user = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-  return user ? JSON.parse(user) : null;
+  try {
+    const raw = localStorage.getItem('current_user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 };
 
-// Check if user is logged in
+// Check authentication
 export const isAuthenticated = () => {
-  return getCurrentUser() !== null;
+  return !!getAccessToken() && !!getCurrentUser();
 };
 
-// Forgot User ID - Send user ID to email
+// Check if password needs change
+export const mustChangePassword = () => {
+  return localStorage.getItem('must_change_password') === 'true';
+};
+
+// Change password
+export const changePassword = async (currentPassword, newPassword) => {
+  const data = await api.post('/api/auth/change-password/', {
+    current_password: currentPassword,
+    new_password: newPassword,
+    confirm_password: newPassword,
+  });
+  
+  if (data.access) {
+    setTokens(data.access, data.refresh);
+  }
+  
+  localStorage.setItem('must_change_password', 'false');
+  return data;
+};
+
+// Forgot User ID
 export const forgotUserId = async (email) => {
-  await new Promise(resolve => setTimeout(resolve, 800));
-  
-  const user = findUserByEmail(email);
-  
-  if (!user) {
-    throw new Error('No account found with this email address.');
-  }
-  
-  // In production, this would send an actual email
-  console.log(`Sending User ID ${user.userId} to ${email}`);
-  
-  // Store for demo purposes
-  localStorage.setItem('last_user_id_recovery', JSON.stringify({
-    email,
-    userId: user.userId,
-    timestamp: new Date().toISOString()
-  }));
-  
-  return { success: true, userId: user.userId };
+  return api.post('/api/auth/forgot-userid/', { email });
 };
 
-// Forgot Password - Send reset link
+// Forgot Password
 export const forgotPassword = async (email) => {
-  await new Promise(resolve => setTimeout(resolve, 800));
-  
-  const user = findUserByEmail(email);
-  
-  if (!user) {
-    throw new Error('No account found with this email address.');
-  }
-  
-  // Generate reset token
-  const resetToken = btoa(`${user.id}_${Date.now()}_${Math.random()}`);
-  
-  // Store reset token
-  const resetTokens = JSON.parse(localStorage.getItem(STORAGE_KEYS.RESET_TOKENS) || '{}');
-  resetTokens[resetToken] = {
-    userId: user.id,
-    email: user.email,
-    expiresAt: new Date(Date.now() + 3600000).toISOString() // 1 hour expiry
-  };
-  localStorage.setItem(STORAGE_KEYS.RESET_TOKENS, JSON.stringify(resetTokens));
-  
-  // In production, this would send an actual email with reset link
-  console.log(`Password reset link for ${email}: /reset-password?token=${resetToken}`);
-  
-  // Store for demo purposes
-  localStorage.setItem('last_password_reset', JSON.stringify({
-    email,
-    resetToken,
-    timestamp: new Date().toISOString()
-  }));
-  
-  return { success: true };
+  return api.post('/api/auth/forgot-password/', { email });
 };
 
-// Reset password
+// Reset Password
 export const resetPassword = async (token, newPassword) => {
-  await new Promise(resolve => setTimeout(resolve, 800));
-  
-  const resetTokens = JSON.parse(localStorage.getItem(STORAGE_KEYS.RESET_TOKENS) || '{}');
-  const resetData = resetTokens[token];
-  
-  if (!resetData) {
-    throw new Error('Invalid or expired reset token');
-  }
-  
-  if (new Date(resetData.expiresAt) < new Date()) {
-    delete resetTokens[token];
-    localStorage.setItem(STORAGE_KEYS.RESET_TOKENS, JSON.stringify(resetTokens));
-    throw new Error('Reset token has expired');
-  }
-  
-  // Update user password
-  const users = getUsers();
-  const userIndex = users.findIndex(u => u.id === resetData.userId);
-  
-  if (userIndex === -1) {
-    throw new Error('User not found');
-  }
-  
-  users[userIndex].password = btoa(newPassword);
-  localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-  
-  // Delete used token
-  delete resetTokens[token];
-  localStorage.setItem(STORAGE_KEYS.RESET_TOKENS, JSON.stringify(resetTokens));
-  
-  return { success: true };
+  return api.post('/api/auth/reset-password/', {
+    token,
+    new_password: newPassword,
+    confirm_password: newPassword,
+  });
 };
 
-// Update user profile
-export const updateUserProfile = async (userId, updates) => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  const users = getUsers();
-  const userIndex = users.findIndex(u => u.userId === userId);
-  
-  if (userIndex === -1) {
-    throw new Error('User not found');
-  }
-  
-  users[userIndex] = { ...users[userIndex], ...updates };
-  localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-  
-  // Update current user if it's the same
-  const currentUser = getCurrentUser();
-  if (currentUser && currentUser.userId === userId) {
-    const { password, ...updatedUser } = users[userIndex];
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser));
-  }
-  
-  return users[userIndex];
+// Get current user profile
+export const getCurrentUserProfile = async () => {
+  const data = await api.get('/api/auth/me/');
+  return data;
+};
+
+// Initialize auth
+export const initializeAuth = () => {
+  const token = getAccessToken();
+  const user = getCurrentUser();
+  console.log('Auth initialized:', { hasToken: !!token, hasUser: !!user });
+  return { token, user };
 };

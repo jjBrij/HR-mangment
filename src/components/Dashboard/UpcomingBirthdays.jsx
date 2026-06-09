@@ -1,40 +1,11 @@
 // src/components/Dashboard/UpcomingBirthdays.jsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { FiGift } from 'react-icons/fi';
 import { useAppContext } from '../../context/AppContext';
 
 const UpcomingBirthdays = () => {
-  const { employees, refreshTrigger } = useAppContext();
-  const [birthdays, setBirthdays] = useState([]);
-
-  useEffect(() => {
-    loadBirthdays();
-  }, [employees, refreshTrigger]);
-
-  const loadBirthdays = () => {
-    const currentDate = new Date();
-    const currentMonth = currentDate.getMonth();
-    const currentDay = currentDate.getDate();
-    
-    const upcoming = employees.filter(emp => {
-      if (!emp.dateOfBirth) return false;
-      const birthDate = new Date(emp.dateOfBirth);
-      const birthMonth = birthDate.getMonth();
-      const birthDay = birthDate.getDate();
-      
-      // Check if birthday is in next 30 days
-      if (birthMonth === currentMonth && birthDay >= currentDay) return true;
-      if (birthMonth === currentMonth + 1 && birthDay <= currentDay + 30) return true;
-      return false;
-    }).slice(0, 3).map(emp => ({
-      id: emp.id,
-      name: emp.name,
-      department: emp.department,
-      date: `${new Date(emp.dateOfBirth).toLocaleString('default', { month: 'short' })} ${new Date(emp.dateOfBirth).getDate()}`
-    }));
-    
-    setBirthdays(upcoming);
-  };
+  const { getUpcomingBirthdays } = useAppContext();
+  const birthdays = getUpcomingBirthdays();
 
   if (birthdays.length === 0) {
     return (
@@ -66,7 +37,9 @@ const UpcomingBirthdays = () => {
           <div key={birthday.id} className="grid grid-cols-3 items-center py-2 hover:bg-gray-50 rounded-lg transition px-2">
             <span className="font-medium text-gray-800 text-sm">{birthday.name}</span>
             <span className="text-sm text-gray-600">{birthday.department}</span>
-            <span className="text-sm text-indigo-600 font-medium">{birthday.date}</span>
+            <span className="text-sm text-indigo-600 font-medium">
+              {new Date(birthday.date_of_birth).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </span>
           </div>
         ))}
       </div>
