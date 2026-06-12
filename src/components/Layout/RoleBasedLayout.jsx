@@ -13,7 +13,7 @@ const RoleBasedLayout = ({ children, allowedRoles = [] }) => {
   if (allowedRoles.length > 0 && !allowedRoles.includes(currentUser.role)) {
     // Redirect to appropriate dashboard based on role
     if (currentUser.role === 'employee') {
-      return <Navigate to="/employee-dashboard" replace />;
+      return <Navigate to="/" replace />;
     } else {
       return <Navigate to="/" replace />;
     }

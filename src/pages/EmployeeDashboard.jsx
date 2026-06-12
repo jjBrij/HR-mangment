@@ -48,15 +48,17 @@ const EmployeeDashboard = () => {
 
   // Load daily targets and performance when employee changes
   useEffect(() => {
-    if (currentEmployee) {
-      loadDailyTargets();
-      loadPerformanceTarget();
-    }
-  }, [currentEmployee, selectedMonth, performanceTargets]);
+    if (!currentEmployee?.id) return;
+
+    loadDailyTargets();
+    loadPerformanceTarget();
+  }, [currentEmployee?.id, selectedMonth]);
+
+
 
   const loadEmployeeData = async () => {
     try {
-      const employee = await api.get('/api/employees/me/');
+      const employee = await api.get('/api/auth/me/');
       console.log("Employee:", employee);
       setCurrentEmployee(employee);
       sessionStorage.setItem(
@@ -68,24 +70,21 @@ const EmployeeDashboard = () => {
     }
   };
 
-  const loadPerformanceTarget = async() => {
+  const loadPerformanceTarget = async () => {
     if (!currentEmployee) return;
 
     // Find performance target for current employee and selected month
-    const target = await api.get(
-      `/api/performance/targets/my_target/?month=${selectedMonth}`
-    );
+    const response = await api.get(`/api/performance/targets/my_target/?month=${selectedMonth}`);
+    const target = response?.results?.[0] || null;
 
-    console.log("TARGET:", target);
-    
-    setPerformanceTarget(target);
-    
+    setPerformanceTarget(target); 
+
     if (target) {
       const totalTarget = target.current_target || 0;
       const completedTarget = target.completed_target || 0;
       const pendingTarget = totalTarget - completedTarget;
       const completionRate = totalTarget > 0 ? (completedTarget / totalTarget) * 100 : 0;
-      
+
       setStatistics({
         totalTarget,
         completedTarget,
@@ -104,13 +103,13 @@ const EmployeeDashboard = () => {
 
   const loadDailyTargets = async () => {
     if (!currentEmployee) return;
-    
+
     try {
       // Fetch daily targets from API
       const response = await api.get(
         `/api/performance/daily/?employee=${currentEmployee.id}&month=${selectedMonth}`
       );
-      
+
       console.log("DAILY TARGETS API RESPONSE:", response);
 
       let targets = Array.isArray(response)
@@ -118,22 +117,22 @@ const EmployeeDashboard = () => {
         : (response.results || []);
 
       console.log("PARSED TARGETS:", targets);
-      
+
       // Generate missing dates for the month
       const startDate = startOfMonth(new Date(selectedMonth + '-01'));
       const currentDate = new Date();
       let endDate;
-      
+
       if (format(currentDate, 'yyyy-MM') === selectedMonth) {
         endDate = currentDate;
       } else {
         endDate = endOfMonth(startDate);
       }
-      
+
       const daysInMonth = eachDayOfInterval({ start: startDate, end: endDate });
       const existingDates = targets.map(t => t.date);
       const missingTargets = [];
-      
+
       daysInMonth.forEach(date => {
         const dateStr = format(date, 'yyyy-MM-dd');
         if (!existingDates.includes(dateStr)) {
@@ -148,16 +147,16 @@ const EmployeeDashboard = () => {
           });
         }
       });
-      
+
       const allTargets = [...targets, ...missingTargets];
       allTargets.sort((a, b) => new Date(a.date) - new Date(b.date));
-      
+
       setDailyTargets(allTargets);
       setFilteredTargets([...allTargets].sort((a, b) => new Date(b.date) - new Date(a.date)));
-      
+
       // Calculate total completed from daily targets
       const totalCompleted = allTargets.reduce((sum, t) => sum + (t.completed_amount || 0), 0);
-      
+
       // Update statistics with completed target
       setStatistics(prev => ({
         ...prev,
@@ -165,7 +164,7 @@ const EmployeeDashboard = () => {
         pendingTarget: prev.totalTarget - totalCompleted,
         completionRate: prev.totalTarget > 0 ? (totalCompleted / prev.totalTarget) * 100 : 0
       }));
-      
+
     } catch (error) {
       console.error('Error loading daily targets:', error);
     }
@@ -186,25 +185,25 @@ const EmployeeDashboard = () => {
 
   const saveEdit = async (id) => {
     setLoading(true);
-    
+
     try {
       const currentTarget = dailyTargets.find(t => t.id === id);
 
       console.log('TARGET ID:', id);
       console.log('CURRENT TARGET:', currentTarget);
-      
+
       // 💎 1. Capture the amount cleanly
       const submittedAmount = Number(editFormData.completed_amount);
 
       // 💎 2. Clear UI state immediately to unlock the component BEFORE awaiting network requests
       setEditingTarget(null);
       setEditFormData({});
-      
+
       // 3. Update daily target via API
       if (String(id).includes('-')) {
         // CREATE (First time saving)
         await api.post('/api/performance/daily/', {
-          employee_id: currentEmployee.employee_id, 
+          employee_id: currentEmployee.employee_id,
           date: currentTarget.date,
           completed_amount: submittedAmount
         });
@@ -212,27 +211,27 @@ const EmployeeDashboard = () => {
         // UPDATE (Infinite subsequent saves)
         // 💎 Changed to PATCH (partial update) and included the employee_id just to be safe
         await api.patch(`/api/performance/daily/${id}/`, {
-          employee_id: currentEmployee.employee_id, 
+          employee_id: currentEmployee.employee_id,
           completed_amount: submittedAmount,
           date: currentTarget.date
         });
       }
-      
+
       // 4. Refresh data
       await loadDailyTargets();
       await loadPerformanceTarget();
-      
+
       alert('Daily target updated successfully!');
-      
+
       if (refreshData) {
         refreshData();
       }
     } catch (error) {
       console.error('Error updating daily target:', error);
       alert(error.response?.data?.error || 'Failed to update target');
-      
+
       // If it fails, we should revert the UI clearing
-      setEditingTarget(id); 
+      setEditingTarget(id);
     } finally {
       setLoading(false);
     }

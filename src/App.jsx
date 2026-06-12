@@ -89,9 +89,27 @@ function AppContent() {
       {/* Routes accessible by both Admin/HR and Employees */}
       <Route path="/" element={
         <ProtectedRoute>
-          <Layout>
-            {isAdminOrHR ? <Dashboard /> : <EmployeeDashboard />}
-          </Layout>
+          <Navigate to="/dashboard" replace />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/dashboard" element={
+        <ProtectedRoute>
+          <RoleBasedLayout allowedRoles={['admin', 'hr_manager']}>
+            <Layout>
+              <Dashboard />
+            </Layout>
+          </RoleBasedLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/employee-dashboard" element={
+        <ProtectedRoute>
+          <RoleBasedLayout allowedRoles={['employee']}>
+            <Layout>
+              <EmployeeDashboard />
+            </Layout>
+          </RoleBasedLayout>
         </ProtectedRoute>
       } />
 
@@ -102,7 +120,7 @@ function AppContent() {
           </Layout>
         </ProtectedRoute>
       } />
-     
+
       <Route path="/employee-dashboard" element={
         <ProtectedRoute>
           <Layout>
@@ -137,7 +155,7 @@ function AppContent() {
 
       {/* Catch all - redirect based on role */}
       <Route path="*" element={
-        <Navigate to={isAdminOrHR ? "/" : "/employee-dashboard"} replace />
+        <Navigate to={isAdminOrHR ? "/dashboard" : "/employee-dashboard"} replace />
       } />
     </Routes>
   );

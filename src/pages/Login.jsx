@@ -28,7 +28,6 @@ const Login = () => {
       const token = localStorage.getItem('access_token');
       const user = getCurrentUser();
       
-      // If there's a token but no user, or token seems invalid, clear everything
       if (token && !user) {
         localStorage.clear();
       }
@@ -51,14 +50,13 @@ const Login = () => {
       const user = getCurrentUser();
       const mustChange = mustChangePassword();
       
-      console.log('Already authenticated, redirecting...', { user, mustChange });
       
       if (mustChange) {
         navigate('/change-password');
-      } else if (user?.role === 'admin' || user?.role === 'hr_manager') {
-        navigate('/dashboard');
+     // } else if (user?.role === 'admin' || user?.role === 'hr_manager') {
+     //   navigate('/dashboard');
       } else {
-        navigate('/employee-dashboard');
+        navigate('/dashboard', { replace: true });
       }
     }
     

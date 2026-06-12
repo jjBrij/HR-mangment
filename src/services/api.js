@@ -1,4 +1,5 @@
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// src/services/api.js - COMPLETE FIXED VERSION
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/';
 const API_URL = `${BASE_URL}`;
 
 export function getAccessToken() { 
@@ -32,22 +33,28 @@ function processQueue(error, token = null) {
 }
 
 async function apiFetch(endpoint, options = {}) {
-  // Endpoint should already include /api/ prefix
   const url = `${API_URL}${endpoint}`;
   console.log('API Request URL:', url);
+  console.log('API Request Options:', options);
 
-  const headers = {
-    ...(options.body && !(options.body instanceof FormData)
-      ? { 'Content-Type': 'application/json' }
-      : {}),
-    ...options.headers,
-  };
+  // Handle headers properly for FormData
+  const headers = { ...options.headers };
+  
+  // Don't set Content-Type for FormData - let browser set it with boundary
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
+  } else if (options.body && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   const token = getAccessToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   try {
-    let response = await fetch(url, { ...options, headers });
+    let response = await fetch(url, { 
+      ...options, 
+      headers 
+    });
 
     // Auto-refresh on 401
     if (response.status === 401 && getRefreshToken()) {
@@ -113,7 +120,10 @@ async function apiFetch(endpoint, options = {}) {
         }
       }
       
-      throw new Error(errorMessage);
+      const error = new Error(errorMessage);
+      error.response = errorData;
+      error.status = response.status;
+      throw error;
     }
 
     if (response.status === 204) return null;
@@ -121,7 +131,7 @@ async function apiFetch(endpoint, options = {}) {
     
   } catch (error) {
     if (error.message === 'Failed to fetch') {
-      throw new Error('Cannot connect to server. Please make sure the backend is running on port 8000');
+      throw new Error('Cannot connect to server.');
     }
     throw error;
   }
@@ -129,21 +139,50 @@ async function apiFetch(endpoint, options = {}) {
 
 export const api = {
   get: (url, opts = {}) => apiFetch(url, { method: 'GET', ...opts }),
-  post: (url, data, opts = {}) => apiFetch(url, { 
-    method: 'POST', 
-    body: JSON.stringify(data), 
-    ...opts 
-  }),
-  put: (url, data, opts = {}) => apiFetch(url, { 
-    method: 'PUT', 
-    body: JSON.stringify(data), 
-    ...opts 
-  }),
-  patch: (url, data, opts = {}) => apiFetch(url, { 
-    method: 'PATCH', 
-    body: JSON.stringify(data), 
-    ...opts 
-  }),
+  post: (url, data, opts = {}) => {
+    // Check if data is FormData
+    if (data instanceof FormData) {
+      return apiFetch(url, { 
+        method: 'POST', 
+        body: data, 
+        ...opts 
+      });
+    }
+    // Regular JSON post
+    return apiFetch(url, { 
+      method: 'POST', 
+      body: JSON.stringify(data), 
+      ...opts 
+    });
+  },
+  put: (url, data, opts = {}) => {
+    if (data instanceof FormData) {
+      return apiFetch(url, { 
+        method: 'PUT', 
+        body: data, 
+        ...opts 
+      });
+    }
+    return apiFetch(url, { 
+      method: 'PUT', 
+      body: JSON.stringify(data), 
+      ...opts 
+    });
+  },
+  patch: (url, data, opts = {}) => {
+    if (data instanceof FormData) {
+      return apiFetch(url, { 
+        method: 'PATCH', 
+        body: data, 
+        ...opts 
+      });
+    }
+    return apiFetch(url, { 
+      method: 'PATCH', 
+      body: JSON.stringify(data), 
+      ...opts 
+    });
+  },
   delete: (url, opts = {}) => apiFetch(url, { method: 'DELETE', ...opts }),
   upload: (url, formData, opts = {}) => apiFetch(url, { 
     method: 'POST', 

@@ -1,4 +1,4 @@
-// src/pages/AddEmployee.jsx
+// src/pages/AddEmployee.jsx - COMPLETELY FIXED VERSION
 import React, { useState, useCallback, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiSave, FiX, FiUpload, FiFile, FiTrash2 } from 'react-icons/fi';
@@ -71,7 +71,7 @@ const FileUploadField = memo(({ label, fieldName, uploadedFile, onFileUpload, on
           <div>
             <p className="text-sm font-medium text-gray-700">{uploadedFile.name}</p>
             <p className="text-xs text-gray-500">
-              {Math.round((uploadedFile.preview?.length || 0) / 1024)} KB
+              {Math.round((uploadedFile.size || 0) / 1024)} KB
             </p>
           </div>
         </div>
@@ -178,11 +178,28 @@ const AddEmployee = () => {
   const [uploadedFiles, setUploadedFiles] = useState({});
   const [errors, setErrors] = useState({});
 
+  // File field mapping from frontend camelCase to backend snake_case
+  const fileFieldMapping = {
+    'previousSalarySlip': 'previous_salary_slip',
+    'previousExperienceCertificate': 'previous_experience_certificate',
+    'currentExperienceLetter': 'current_experience_letter',
+    'offerLetter': 'offer_letter',
+    'appointmentLetter': 'appointment_letter',
+    'bankPassbook': 'bank_passbook',
+    'aadharCard': 'aadhar_card',
+    'panCard': 'pan_card',
+    'passportPhoto': 'passport_photo',
+    'tenthMarksheet': 'tenth_marksheet',
+    'twelfthMarksheet': 'twelfth_marksheet',
+    'graduationMarksheet': 'graduation_marksheet',
+    'postGraduationMarksheet': 'post_graduation_marksheet',
+    'resume': 'resume'
+  };
+
   // Handle text input changes
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    // Clear error for this field
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -192,14 +209,12 @@ const AddEmployee = () => {
   const handleFileUpload = useCallback((e, fieldName) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate file type
       const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
       if (!validTypes.includes(file.type)) {
         alert('Please upload only PNG, JPG, JPEG, or PDF files');
         return;
       }
       
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert('File size should be less than 5MB');
         return;
@@ -210,7 +225,7 @@ const AddEmployee = () => {
       reader.onloadend = () => {
         setUploadedFiles(prev => ({
           ...prev,
-          [fieldName]: { name: file.name, type: file.type, preview: reader.result }
+          [fieldName]: { name: file.name, type: file.type, preview: reader.result, size: file.size }
         }));
       };
       reader.readAsDataURL(file);
@@ -246,116 +261,123 @@ const AddEmployee = () => {
     return Object.keys(newErrors).length === 0;
   }, [formData]);
 
-  // Handle form submission - API CALL
-  // src/pages/AddEmployee.jsx - Updated handleSubmit to match serializer
-const handleSubmit = useCallback(async (e) => {
-  e.preventDefault();
-  
-  if (!validateForm()) {
-    alert('Please fix the errors before submitting');
-    return;
-  }
-  
-  setLoading(true);
-  
-  try {
-    // Prepare data to match Django serializer exactly
-    const employeeData = {
-      // Required fields (no defaults, must be provided)
-      fullName: formData.fullName,
-      employeeId: formData.employeeId,
-      email: formData.email,
-      phone: formData.phone,
-      
-      // Optional fields with defaults
-      dateOfBirth: formData.dateOfBirth || null,
-      gender: formData.gender || null,
-      bloodGroup: formData.bloodGroup || null,
-      maritalStatus: formData.maritalStatus || null,
-      nationality: formData.nationality || 'Indian',
-      
-      // Family Information
-      fatherName: formData.fatherName || '',
-      fatherContact: formData.fatherContact || '',
-      motherName: formData.motherName || '',
-      motherContact: formData.motherContact || '',
-      spouseName: formData.spouseName || '',
-      spouseContact: formData.spouseContact || '',
-      
-      // Address
-      address: formData.address || '',
-      permanentAddress: formData.permanentAddress || '',
-      
-      // Emergency Contact
-      emergencyContactName: formData.emergencyContactName || '',
-      emergencyContactRelation: formData.emergencyContactRelation || '',
-      emergencyContactNumber: formData.emergencyContactNumber || '',
-      
-      // Job Information
-      department: formData.department || '',
-      designation: formData.designation || '',
-      workLocation: formData.workLocation || '',
-      employmentType: formData.employmentType || 'Full-time',
-      joiningDate: formData.joiningDate || null,
-      status: formData.status || 'Active',
-      
-      // Salary
-      basicSalary: parseFloat(formData.currentSalary) || 0,
-      currentSalary: parseFloat(formData.currentSalary) || 0,
-      previousCompany: formData.previousCompany || '',
-      previousSalary: formData.previousSalary ? parseFloat(formData.previousSalary) : null,
-      
-      // Bank Information
-      bankName: formData.bankName || '',
-      accountNumber: formData.accountNumber || '',
-      ifscCode: formData.ifscCode || ''
-    };
+  // Handle form submission - SINGLE IMPLEMENTATION
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
     
-    console.log('Sending employee data:', employeeData);
-    
-    // Make API call to backend
-    const response = await api.post('/api/employees/', employeeData);
-    
-    console.log('Employee created successfully:', response);
-    
-    // Refresh dashboard data
-    refreshData();
-    
-    setLoading(false);
-    alert('Employee added successfully! Credentials have been sent to the employee\'s email.');
-    navigate('/employees');
-    
-  } catch (error) {
-    console.error('Error creating employee:', error);
-    console.error('Error response data:', error.response?.data);
-    
-    // Handle validation errors
-    let errorMessage = 'Error creating employee. Please check the following:\n';
-    
-    if (error.response?.data) {
-      const errorData = error.response.data;
-      
-      if (typeof errorData === 'object') {
-        for (const [field, messages] of Object.entries(errorData)) {
-          if (Array.isArray(messages)) {
-            errorMessage += `\n• ${field}: ${messages.join(', ')}`;
-          } else if (typeof messages === 'string') {
-            errorMessage += `\n• ${field}: ${messages}`;
-          } else if (messages && typeof messages === 'object') {
-            errorMessage += `\n• ${field}: ${JSON.stringify(messages)}`;
-          }
-        }
-      } else if (typeof errorData === 'string') {
-        errorMessage = errorData;
-      }
-    } else if (error.message) {
-      errorMessage = error.message;
+    if (!validateForm()) {
+      alert('Please fix the errors before submitting');
+      return;
     }
     
-    alert(errorMessage);
-    setLoading(false);
-  }
-}, [formData, validateForm, refreshData, navigate]);
+    setLoading(true);
+    
+    try {
+      // Create FormData for file uploads
+      const formDataObj = new FormData();
+      
+      // Add all text fields (camelCase as expected by serializer)
+      const textFields = {
+        fullName: formData.fullName,
+        employeeId: formData.employeeId,
+        email: formData.email,
+        phone: formData.phone,
+        dateOfBirth: formData.dateOfBirth,
+        gender: formData.gender,
+        bloodGroup: formData.bloodGroup,
+        maritalStatus: formData.maritalStatus,
+        nationality: formData.nationality,
+        fatherName: formData.fatherName,
+        fatherContact: formData.fatherContact,
+        motherName: formData.motherName,
+        motherContact: formData.motherContact,
+        spouseName: formData.spouseName,
+        spouseContact: formData.spouseContact,
+        address: formData.address,
+        permanentAddress: formData.permanentAddress,
+        emergencyContactName: formData.emergencyContactName,
+        emergencyContactRelation: formData.emergencyContactRelation,
+        emergencyContactNumber: formData.emergencyContactNumber,
+        department: formData.department,
+        designation: formData.designation,
+        workLocation: formData.workLocation,
+        employmentType: formData.employmentType,
+        joiningDate: formData.joiningDate,
+        status: formData.status,
+        previousCompany: formData.previousCompany,
+        previousSalary: formData.previousSalary,
+        currentSalary: formData.currentSalary,
+        bankName: formData.bankName,
+        accountNumber: formData.accountNumber,
+        ifscCode: formData.ifscCode
+      };
+      
+      // Append text fields
+      Object.keys(textFields).forEach(key => {
+        const value = textFields[key];
+        if (value !== null && value !== undefined && value !== '') {
+          formDataObj.append(key, value);
+        }
+      });
+      
+      // Append files with proper backend field names
+      const fileFields = [
+        'previousSalarySlip', 'previousExperienceCertificate',
+        'currentExperienceLetter', 'offerLetter', 'appointmentLetter',
+        'bankPassbook', 'aadharCard', 'panCard', 'passportPhoto',
+        'tenthMarksheet', 'twelfthMarksheet', 'graduationMarksheet',
+        'postGraduationMarksheet', 'resume'
+      ];
+      
+      
+      
+      // Make API call with FormData
+      const response = await api.post('/api/employees/', formDataObj, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      console.log('Employee created successfully:', response.data);
+      
+      // Refresh dashboard data
+      refreshData();
+      
+      setLoading(false);
+      alert('Employee added successfully! Credentials have been sent to the employee\'s email.');
+      navigate('/employees');
+      
+    } catch (error) {
+      console.error('Error creating employee:', error);
+      console.error('Error response data:', error.response?.data);
+      
+      let errorMessage = 'Error creating employee. Please check the following:\n';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        if (typeof errorData === 'object') {
+          for (const [field, messages] of Object.entries(errorData)) {
+            if (Array.isArray(messages)) {
+              errorMessage += `\n• ${field}: ${messages.join(', ')}`;
+            } else if (typeof messages === 'string') {
+              errorMessage += `\n• ${field}: ${messages}`;
+            } else if (messages && typeof messages === 'object') {
+              errorMessage += `\n• ${field}: ${JSON.stringify(messages)}`;
+            }
+          }
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
+      setLoading(false);
+    }
+  }, [formData, validateForm, refreshData, navigate, fileFieldMapping]);
+
   // Memoize options to prevent recreation
   const genderOptions = useMemo(() => [
     { value: 'Male', label: 'Male' },

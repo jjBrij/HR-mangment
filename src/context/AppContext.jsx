@@ -1,7 +1,8 @@
 // src/context/AppContext.jsx
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { api } from '../services/api';
+import { api, getAccessToken } from '../services/api';
 import { getCurrentUser } from '../services/authService';
+
 
 const AppContext = createContext();
 
@@ -20,7 +21,32 @@ export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const currentUser = getCurrentUser();
+  // const currentUser = getCurrentUser();
+  const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setCurrentUser(getCurrentUser());
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+  useEffect(() => {
+    const handleAuthChange = () => {
+      loadAllData();
+    };
+
+    window.addEventListener("auth-change", handleAuthChange);
+
+    return () => {
+      window.removeEventListener("auth-change", handleAuthChange);
+      return () => window.removeEventListener("data-ready", handle);
+
+    };
+  }, []);
 
   const loadAllData = useCallback(async () => {
     setIsLoading(true);
@@ -32,14 +58,13 @@ export const AppProvider = ({ children }) => {
       const employeesList = Array.isArray(employeesRes) ? employeesRes :
         (employeesRes.results ? employeesRes.results : []);
       setEmployees(employeesList);
-      console.log('Employees loaded:', employeesList.length);
 
       // Load performance targets
       const performanceRes = await api.get('/api/performance/targets/');
       const targetsList = Array.isArray(performanceRes) ? performanceRes :
         (performanceRes.results ? performanceRes.results : []);
       setPerformanceTargets(targetsList);
-      console.log('Performance targets loaded:', targetsList.length);
+      // console.log('Performance targets loaded:', targetsList.length);
 
       // Load leave requests
       //const leaveRes = await api.get('/api/leave/requests/');
@@ -58,9 +83,18 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
+
   useEffect(() => {
+    const token = getAccessToken();
+
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
     loadAllData();
   }, [refreshTrigger]);
+
 
   const refreshData = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -170,7 +204,7 @@ export const AppProvider = ({ children }) => {
     return birthdays;
   }, [employees]);
 
-  const value = {
+  const value = useMemo(() => ({
     employees,
     performanceTargets,
     leaveRequests,
@@ -182,7 +216,18 @@ export const AppProvider = ({ children }) => {
     getPerformanceTarget,
     getRecentActivities,
     getUpcomingBirthdays,
-  };
+  }), [
+    employees,
+    performanceTargets,
+    leaveRequests,
+    isLoading,
+    error,
+    getDashboardStats,
+    getCurrentEmployee,
+    getPerformanceTarget,
+    getRecentActivities,
+    getUpcomingBirthdays
+  ]);
 
   return (
     <AppContext.Provider value={value}>

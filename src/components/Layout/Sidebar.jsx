@@ -1,11 +1,11 @@
 // src/components/Layout/Sidebar.jsx
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { 
-  FiHome, 
-  FiUsers, 
-  FiDollarSign, 
-  FiCalendar, 
+import {
+  FiHome,
+  FiUsers,
+  FiDollarSign,
+  FiCalendar,
   FiSettings,
   FiBriefcase,
   FiPieChart,
@@ -25,26 +25,28 @@ const Sidebar = ({ onClose }) => {
 
   // Navigation items for all users
   const commonNavItems = [
-    { path: '/', name: 'Dashboard', icon: FiHome },
+    { path: '/dashboard', name: 'Dashboard', icon: FiHome },
   ];
 
   // Employee only navigation
   const employeeNavItems = [
+    { path: '/dashboard', name: 'Dashboard', icon: FiHome },
     { path: '/employee-dashboard', name: 'My Dashboard', icon: FiUserCheck },
-    { path: '/attendance', name: 'Attendance', icon: FiCalendar },
-    { path: '/leave', name: 'Leave', icon: FiPhoneCall },
+    // { path: '/attendance', name: 'Attendance', icon: FiCalendar },
+    // { path: '/leave', name: 'Leave', icon: FiPhoneCall },
     { path: '/performance', name: 'Performance', icon: FiTrendingUp },
   ];
 
   // Admin/HR only navigation
   const adminNavItems = [
+    { path: '/dashboard', name: 'Dashboard', icon: FiHome },
     { path: '/employees', name: 'Employees', icon: FiUsers },
     { path: '/attendance', name: 'Attendance', icon: FiCalendar },
     { path: '/performance', name: 'Performance', icon: FiTrendingUp },
     { path: '/payroll', name: 'Payroll', icon: FiDollarSign },
     { path: '/leave', name: 'Leave', icon: FiPhoneCall },
-    { path: '/employee-dashboard', name: 'My Dashboard', icon: FiUserCheck },
-    { path: '/settings', name: 'Settings', icon: FiSettings },
+    // { path: '/employee-dashboard', name: 'My Dashboard', icon: FiUserCheck },
+    // { path: '/settings', name: 'Settings', icon: FiSettings },
   ];
 
   // Select navigation based on role
@@ -69,15 +71,15 @@ const Sidebar = ({ onClose }) => {
             <p className="text-xs text-gray-500 -mt-0.5">Dashboard</p>
           </div>
         </div>
-        <button 
-          onClick={onClose} 
+        <button
+          onClick={onClose}
           className="p-2 rounded-lg hover:bg-gray-100 transition md:hidden"
         >
           <FiX size={20} className="text-gray-600" />
         </button>
       </div>
 
-      {/* User Profile Section */}
+      {/* User Profile Section 
       <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-white">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-semibold">
@@ -92,7 +94,7 @@ const Sidebar = ({ onClose }) => {
           </div>
         </div>
       </div>
-
+*/}
       {/* Navigation Links */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         {navItems.map((item) => (
@@ -101,8 +103,7 @@ const Sidebar = ({ onClose }) => {
             to={item.path}
             onClick={onClose}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 transition-all duration-200 hover:bg-indigo-50 hover:text-indigo-700 mb-1 ${
-                isActive ? 'active bg-indigo-600 text-white shadow-md hover:bg-indigo-700 hover:text-white' : ''
+              `flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 transition-all duration-200 hover:bg-indigo-50 hover:text-indigo-700 mb-1 ${isActive ? 'active bg-indigo-600 text-white shadow-md hover:bg-indigo-700 hover:text-white' : ''
               }`
             }
           >

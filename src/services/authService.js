@@ -1,12 +1,10 @@
-// src/services/authService.js
 import { api, setTokens, clearTokens, getAccessToken } from './api';
 
-// Login
+
 export const login = async (employeeId, password) => {
   try {
     clearTokens();
     
-    // Use /api/auth/login/ (without double /api)
     const data = await api.post('/api/auth/login/', {
       employee_id: employeeId,
       password: password,
