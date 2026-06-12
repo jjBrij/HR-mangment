@@ -1,6 +1,7 @@
 // src/services/api.js - COMPLETE FIXED VERSION
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/';
-const API_URL = `${BASE_URL}`;
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+
+const API_URL = BASE_URL;
 
 export function getAccessToken() { 
   return localStorage.getItem('access_token'); 
