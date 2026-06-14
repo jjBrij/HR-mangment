@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Layout from './components/Layout/Layout';
@@ -11,6 +11,7 @@ import Dashboard from './pages/Dashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import Employees from './pages/Employees';
 import AddEmployee from './pages/AddEmployee';
+import EditEmployee from './pages/EditEmployee';
 import Attendance from './pages/Attendance';
 import Performance from './pages/Performance';
 import Payroll from './pages/Payroll';
@@ -18,30 +19,56 @@ import Leave from './pages/Leave';
 import Settings from './pages/Settings';
 import { initializeData } from './services/dataService';
 import { initializeAuth, getCurrentUser } from './services/authService';
-import EditEmployee from './pages/EditEmployee';
+
+// Reads role fresh on every render — no stale closure
+const getHomeRoute = () => {
+  const user = getCurrentUser();
+  const isAdminOrHR = user?.role === 'admin' || user?.role === 'hr_manager';
+  return isAdminOrHR ? '/dashboard' : '/employee-dashboard';
+};
+
+// Smart redirect component — always reads localStorage at render time
+const RoleRedirect = () => {
+  return <Navigate to={getHomeRoute()} replace />;
+};
 
 function AppContent() {
+  // Re-render trigger so routes update after login sets localStorage
+  const [, setAuthReady] = useState(false);
+
   useEffect(() => {
     initializeData();
     initializeAuth();
+    // Force a re-render after init so getCurrentUser() has fresh data
+    setAuthReady(true);
   }, []);
-
-  const currentUser = getCurrentUser();
-  const isAdminOrHR = currentUser?.role === 'admin' || currentUser?.role === 'hr_manager';
 
   return (
     <Routes>
-      {/* Public Routes */}
-      <Route path="/login" element={<Login />} />
+      {/* ── Public ──────────────────────────────────────────────────────── */}
+      <Route path="/login"           element={<Login />} />
       <Route path="/change-password" element={<ChangePassword />} />
 
-      {/* Admin/HR Only Routes */}
+      {/* ── Root → smart role redirect ───────────────────────────────────── */}
+      <Route path="/" element={
+        <ProtectedRoute>
+          <RoleRedirect />
+        </ProtectedRoute>
+      } />
+
+      {/* ── Admin / HR only ─────────────────────────────────────────────── */}
+      <Route path="/dashboard" element={
+        <ProtectedRoute>
+          {/*<RoleBasedLayout allowedRoles={['admin', 'hr_manager',]}>*/}
+            <Layout><Dashboard /></Layout>
+  
+        </ProtectedRoute>
+      } />
+
       <Route path="/employees" element={
         <ProtectedRoute>
           <RoleBasedLayout allowedRoles={['admin', 'hr_manager']}>
-            <Layout>
-              <Employees />
-            </Layout>
+            <Layout><Employees /></Layout>
           </RoleBasedLayout>
         </ProtectedRoute>
       } />
@@ -49,9 +76,7 @@ function AppContent() {
       <Route path="/employees/add" element={
         <ProtectedRoute>
           <RoleBasedLayout allowedRoles={['admin', 'hr_manager']}>
-            <Layout>
-              <AddEmployee />
-            </Layout>
+            <Layout><AddEmployee /></Layout>
           </RoleBasedLayout>
         </ProtectedRoute>
       } />
@@ -59,9 +84,7 @@ function AppContent() {
       <Route path="/employees/edit/:id" element={
         <ProtectedRoute>
           <RoleBasedLayout allowedRoles={['admin', 'hr_manager']}>
-            <Layout>
-              <EditEmployee />
-            </Layout>
+            <Layout><EditEmployee /></Layout>
           </RoleBasedLayout>
         </ProtectedRoute>
       } />
@@ -69,9 +92,7 @@ function AppContent() {
       <Route path="/payroll" element={
         <ProtectedRoute>
           <RoleBasedLayout allowedRoles={['admin', 'hr_manager']}>
-            <Layout>
-              <Payroll />
-            </Layout>
+            <Layout><Payroll /></Layout>
           </RoleBasedLayout>
         </ProtectedRoute>
       } />
@@ -79,83 +100,44 @@ function AppContent() {
       <Route path="/settings" element={
         <ProtectedRoute>
           <RoleBasedLayout allowedRoles={['admin', 'hr_manager']}>
-            <Layout>
-              <Settings />
-            </Layout>
+            <Layout><Settings /></Layout>
           </RoleBasedLayout>
         </ProtectedRoute>
       } />
 
-      {/* Routes accessible by both Admin/HR and Employees */}
-      <Route path="/" element={
-        <ProtectedRoute>
-          <Navigate to="/dashboard" replace />
-        </ProtectedRoute>
-      } />
-
-      <Route path="/dashboard" element={
-        <ProtectedRoute>
-          <RoleBasedLayout allowedRoles={['admin', 'hr_manager']}>
-            <Layout>
-              <Dashboard />
-            </Layout>
-          </RoleBasedLayout>
-        </ProtectedRoute>
-      } />
-
+      {/* ── Employee only ────────────────────────────────────────────────── */}
       <Route path="/employee-dashboard" element={
         <ProtectedRoute>
           <RoleBasedLayout allowedRoles={['employee']}>
-            <Layout>
-              <EmployeeDashboard />
-            </Layout>
+            <Layout><EmployeeDashboard /></Layout>
           </RoleBasedLayout>
         </ProtectedRoute>
       } />
 
-      <Route path="/dashboard" element={
-        <ProtectedRoute>
-          <Layout>
-            <Dashboard />
-          </Layout>
-        </ProtectedRoute>
-      } />
-
-      <Route path="/employee-dashboard" element={
-        <ProtectedRoute>
-          <Layout>
-            <EmployeeDashboard />
-          </Layout>
-        </ProtectedRoute>
-      } />
-
+      {/* ── Shared (all roles) ───────────────────────────────────────────── */}
       <Route path="/attendance" element={
         <ProtectedRoute>
-          <Layout>
-            <Attendance />
-          </Layout>
+          <Layout><Attendance /></Layout>
         </ProtectedRoute>
       } />
 
       <Route path="/performance" element={
         <ProtectedRoute>
-          <Layout>
-            <Performance />
-          </Layout>
+          <Layout><Performance /></Layout>
         </ProtectedRoute>
       } />
 
       <Route path="/leave" element={
         <ProtectedRoute>
-          <Layout>
-            <Leave />
-          </Layout>
+          <Layout><Leave /></Layout>
         </ProtectedRoute>
       } />
 
-      {/* Catch all - redirect based on role */}
+      {/* ── Catch-all ────────────────────────────────────────────────────── */}
       <Route path="*" element={
-        <Navigate to={isAdminOrHR ? "/dashboard" : "/employee-dashboard"} replace />
+        <ProtectedRoute>
+          <RoleRedirect />
+        </ProtectedRoute>
       } />
     </Routes>
   );

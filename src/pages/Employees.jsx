@@ -27,7 +27,6 @@ const Employees = () => {
     setError(null);
     try {
       const response = await api.get('/api/employees/');
-      console.log('Employees loaded:', response);
       
       let employeesList = [];
       if (Array.isArray(response)) {

@@ -133,7 +133,7 @@ const EditEmployee = () => {
     alert('No employee data found');
     navigate('/employees');
   }
-}, []); // ✅ IMPORTANT
+}, []); 
 
   const handleChange = (e) => {
     const { name, value } = e.target;

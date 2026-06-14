@@ -45,7 +45,6 @@ const Login = () => {
     
     window.addEventListener('popstate', handlePopState);
     
-    // Check if already logged in
     if (isAuthenticated()) {
       const user = getCurrentUser();
       const mustChange = mustChangePassword();
@@ -110,7 +109,6 @@ const Login = () => {
         }, 500);
       }
     } catch (error) {
-      console.error('Login error:', error);
       showNotification('error', error.message);
       setErrors({ general: error.message });
     } finally {

@@ -85,7 +85,6 @@ const Payroll = () => {
     
     if (updatedPayroll.length !== payrollList.length) {
       localStorage.setItem('payrollData', JSON.stringify(updatedPayroll));
-      console.log(`Cleaned up ${payrollList.length - updatedPayroll.length} orphaned payroll records`);
     }
     
     return updatedPayroll;
@@ -125,7 +124,6 @@ const Payroll = () => {
           month: currentMonth
         };
         syncedPayroll.push(newPayroll);
-        console.log(`Created payroll record for new employee: ${emp.name}`);
       }
     });
     

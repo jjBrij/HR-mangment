@@ -35,8 +35,7 @@ function processQueue(error, token = null) {
 
 async function apiFetch(endpoint, options = {}) {
   const url = `${API_URL}${endpoint}`;
-  console.log('API Request URL:', url);
-  console.log('API Request Options:', options);
+  
 
   // Handle headers properly for FormData
   const headers = { ...options.headers };

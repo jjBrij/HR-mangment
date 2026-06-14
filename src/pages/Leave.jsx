@@ -101,7 +101,7 @@ const Leave = () => {
     
     if (updatedLeaves.length !== leaveList.length) {
       localStorage.setItem('leaveRequests', JSON.stringify(updatedLeaves));
-      console.log(`Cleaned up ${leaveList.length - updatedLeaves.length} orphaned leave requests`);
+
     }
     
     return updatedLeaves;
@@ -129,7 +129,6 @@ const Leave = () => {
   }, []);
 
   const loadData = () => {
-    console.log('Loading leave data...');
     
     // Load employees
     let employeeList = [];
@@ -152,15 +151,12 @@ const Leave = () => {
     
     if (storedLeaves) {
       parsedLeaves = JSON.parse(storedLeaves);
-      console.log('Raw leaves count:', parsedLeaves.length);
       
       // Clean up orphaned leave requests (remove leaves for deleted employees)
       const cleanedLeaves = cleanupOrphanedLeaves(parsedLeaves, employeeList);
-      console.log('Cleaned leaves count:', cleanedLeaves.length);
       
       setLeaveRequests(cleanedLeaves);
     } else {
-      console.log('No leaves found, initializing empty array');
       setLeaveRequests([]);
       localStorage.setItem('leaveRequests', JSON.stringify([]));
     }
@@ -351,7 +347,6 @@ const Leave = () => {
       remarks: null
     };
     
-    console.log('Submitting new leave:', newLeave);
     
     // Get existing leave requests
     const existingLeaves = localStorage.getItem('leaveRequests');
@@ -364,7 +359,6 @@ const Leave = () => {
       updatedLeaves = [newLeave];
     }
     
-    console.log('Updated leaves array:', updatedLeaves);
     
     // Save to localStorage
     localStorage.setItem('leaveRequests', JSON.stringify(updatedLeaves));

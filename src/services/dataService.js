@@ -16,9 +16,7 @@ const STORAGE_KEYS = {
 
 // Initialize data (for backward compatibility)
 export const initializeData = () => {
-  console.log('Data service initialized - using API backend');
-  // This function is kept for backward compatibility
-  // No need to initialize localStorage since we use API
+  
 };
 
 // Simulate API call (for testing)
@@ -372,17 +370,14 @@ export const dailyTargetService = {
 // Data Sync Service
 export const dataSyncService = {
   syncNewEmployee: async (employee) => {
-    console.log('Syncing new employee:', employee);
     // This will be handled by the backend automatically
   },
   
   syncEmployeeUpdate: async (employee) => {
-    console.log('Syncing employee update:', employee);
     // This will be handled by the backend automatically
   },
   
   deleteEmployeeRelatedData: async (employee) => {
-    console.log('Deleting employee related data:', employee);
     // This will be handled by the backend automatically
   }
 };

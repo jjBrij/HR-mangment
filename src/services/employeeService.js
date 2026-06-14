@@ -1,4 +1,3 @@
-// src/services/employeeService.js (Create this new file)
 import { api } from './api';
 
 const API_URL = '/api/employees';

@@ -19,10 +19,7 @@ const StatsCards = () => {
   const employeeOfMonthData = employeeOfMonth
     ? employees.find(e => e.employee_id === employeeOfMonth.employee_id)
     : null;
-  console.log("StatsCards render");
-  console.log("employees:", employees.length);
-  console.log("targets:", performanceTargets.length);
-  console.log("stats:", stats);
+ 
   const statCards = [
     {
       title: 'Total Employees',

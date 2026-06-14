@@ -1,4 +1,3 @@
-// src/components/EmployeeOnly.jsx - Component to hide content from admin/HR
 import React from 'react';
 import { getCurrentUser } from '../services/authService';
 

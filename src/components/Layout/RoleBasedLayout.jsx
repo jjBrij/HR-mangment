@@ -5,21 +5,25 @@ import { getCurrentUser } from '../../services/authService';
 
 const RoleBasedLayout = ({ children, allowedRoles = [] }) => {
   const currentUser = getCurrentUser();
-  
-  if (!currentUser) {
-    return <Navigate to="/login" replace />;
+  const role = currentUser?.role;
+
+  // Role is allowed — render normally
+  if (role && allowedRoles.includes(role)) {
+    return children;
   }
-  
-  if (allowedRoles.length > 0 && !allowedRoles.includes(currentUser.role)) {
-    // Redirect to appropriate dashboard based on role
-    if (currentUser.role === 'employee') {
-      return <Navigate to="/" replace />;
-    } else {
-      return <Navigate to="/" replace />;
-    }
+
+  // Employee hitting an admin route → go to employee dashboard
+  if (role === 'employee') {
+    return <Navigate to="/employee-dashboard" replace />;
   }
-  
-  return children;
+
+  // Admin/HR hitting employee route → go to main dashboard
+  if (role === 'admin' || role === 'hr_manager') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // No role at all → login
+  return <Navigate to="/login" replace />;
 };
 
 export default RoleBasedLayout;

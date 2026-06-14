@@ -12,226 +12,193 @@ import {
   FiEdit2,
   FiX,
   FiActivity,
-  FiUser,
   FiMail,
   FiPhone,
-  FiBriefcase,
   FiMapPin,
 } from 'react-icons/fi';
-import { format, startOfMonth, eachDayOfInterval, startOfToday, isSameDay, endOfMonth } from 'date-fns';
+import {
+  format,
+  startOfMonth,
+  eachDayOfInterval,
+  startOfToday,
+  isSameDay,
+  endOfMonth,
+} from 'date-fns';
 import { useAppContext } from '../context/AppContext';
 import { api } from '../services/api';
-import { getCurrentUser } from '../services/authService';
 
 const EmployeeDashboard = () => {
-  const { employees: globalEmployees, refreshData, performanceTargets } = useAppContext();
-  const [currentEmployee, setCurrentEmployee] = useState(null);
-  const [dailyTargets, setDailyTargets] = useState([]);
-  const [filteredTargets, setFilteredTargets] = useState([]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [editingTarget, setEditingTarget] = useState(null);
-  const [editFormData, setEditFormData] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [statistics, setStatistics] = useState({
+  const { refreshData } = useAppContext();
+
+  const [currentEmployee, setCurrentEmployee]   = useState(null);
+  const [dailyTargets, setDailyTargets]         = useState([]);
+  const [filteredTargets, setFilteredTargets]   = useState([]);
+  const [selectedMonth, setSelectedMonth]       = useState(
+    new Date().toISOString().slice(0, 7)
+  );
+  const [editingTarget, setEditingTarget]       = useState(null);
+  const [editFormData, setEditFormData]         = useState({});
+  const [loading, setLoading]                   = useState(false);
+  const [currentMonth, setCurrentMonth]         = useState(new Date());
+  const [statistics, setStatistics]             = useState({
     totalTarget: 0,
     completedTarget: 0,
     pendingTarget: 0,
-    completionRate: 0
+    completionRate: 0,
   });
   const [performanceTarget, setPerformanceTarget] = useState(null);
 
-  // Load employee data
+  // ── 1. Load employee once on mount ──────────────────────────────────────────
   useEffect(() => {
     loadEmployeeData();
   }, []);
 
-  // Load daily targets and performance when employee changes
+  // ── 2. Load all data whenever employee or month changes ─────────────────────
+  //    (single effect, stable deps — no race condition)
   useEffect(() => {
-    if (!currentEmployee?.id) return;
+    if (!currentEmployee) return;
+    loadAllData();
+  }, [currentEmployee, selectedMonth]);
 
-    loadDailyTargets();
-    loadPerformanceTarget();
-  }, [currentEmployee?.id, selectedMonth]);
-
-
-
+  // ── loadEmployeeData ────────────────────────────────────────────────────────
   const loadEmployeeData = async () => {
     try {
       const employee = await api.get('/api/auth/me/');
-      console.log("Employee:", employee);
-      setCurrentEmployee(employee);
-      sessionStorage.setItem(
-        'loggedInEmployee',
-        JSON.stringify(employee)
-      );
+
+      // Normalise the name field — backends differ
+      const normalized = {
+        ...employee,
+        name:
+          employee.name ||
+          employee.full_name ||
+          employee.username ||
+          'Employee',
+      };
+
+      setCurrentEmployee(normalized);
+      sessionStorage.setItem('loggedInEmployee', JSON.stringify(normalized));
     } catch (error) {
-      console.error('Error loading employee:', error);
     }
   };
 
-  const loadPerformanceTarget = async () => {
-    if (!currentEmployee) return;
-
-    // Find performance target for current employee and selected month
-    const response = await api.get(`/api/performance/targets/my_target/?month=${selectedMonth}`);
-    const target = response?.results?.[0] || null;
-
-    setPerformanceTarget(target); 
-
-    if (target) {
-      const totalTarget = target.current_target || 0;
-      const completedTarget = target.completed_target || 0;
-      const pendingTarget = totalTarget - completedTarget;
-      const completionRate = totalTarget > 0 ? (completedTarget / totalTarget) * 100 : 0;
-
-      setStatistics({
-        totalTarget,
-        completedTarget,
-        pendingTarget: pendingTarget > 0 ? pendingTarget : 0,
-        completionRate
-      });
-    } else {
-      setStatistics({
-        totalTarget: 0,
-        completedTarget: 0,
-        pendingTarget: 0,
-        completionRate: 0
-      });
-    }
-  };
-
-  const loadDailyTargets = async () => {
-    if (!currentEmployee) return;
-
+  // ── loadAllData — single merged fetch, single setStatistics call ────────────
+  const loadAllData = async () => {
     try {
-      // Fetch daily targets from API
-      const response = await api.get(
-        `/api/performance/daily/?employee=${currentEmployee.id}&month=${selectedMonth}`
-      );
+      // Fetch both endpoints in parallel
+      const [perfResponse, dailyResponse] = await Promise.all([
+        api.get(
+          `/api/performance/targets/my_target/?month=${selectedMonth}`
+        ),
+        api.get(
+          `/api/performance/daily/?employee=${currentEmployee.id}&month=${selectedMonth}`
+        ),
+      ]);
 
-      console.log("DAILY TARGETS API RESPONSE:", response);
-
-      let targets = Array.isArray(response)
-        ? response
-        : (response.results || []);
-
-      console.log("PARSED TARGETS:", targets);
-
-      // Generate missing dates for the month
-      const startDate = startOfMonth(new Date(selectedMonth + '-01'));
-      const currentDate = new Date();
-      let endDate;
-
-      if (format(currentDate, 'yyyy-MM') === selectedMonth) {
-        endDate = currentDate;
-      } else {
-        endDate = endOfMonth(startDate);
+      // ── Resolve performance target (handle all response shapes) ─────────────
+      let target = null;
+      if (Array.isArray(perfResponse)) {
+        target = perfResponse[0] ?? null;
+      } else if (perfResponse?.results) {
+        target = perfResponse.results[0] ?? null;
+      } else if (perfResponse?.current_target !== undefined) {
+        target = perfResponse; // direct object
       }
 
-      const daysInMonth = eachDayOfInterval({ start: startDate, end: endDate });
-      const existingDates = targets.map(t => t.date);
-      const missingTargets = [];
+      const totalTarget = Number(target?.current_target) || 0;
 
-      daysInMonth.forEach(date => {
+      // ── Resolve daily targets ────────────────────────────────────────────────
+      let dailyList = Array.isArray(dailyResponse)
+        ? dailyResponse
+        : dailyResponse?.results || [];
+
+      // Fill missing dates so every day of the month appears in the table
+      const startDate = startOfMonth(new Date(selectedMonth + '-01'));
+      const endDate =
+        format(new Date(), 'yyyy-MM') === selectedMonth
+          ? new Date()
+          : endOfMonth(startDate);
+
+      const existingDates = dailyList.map((t) => t.date);
+      eachDayOfInterval({ start: startDate, end: endDate }).forEach((date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
         if (!existingDates.includes(dateStr)) {
-          missingTargets.push({
+          dailyList.push({
             id: `${currentEmployee.employee_id}-${dateStr}`,
             employee_id: currentEmployee.employee_id,
-            employee_name: currentEmployee.name,
             date: dateStr,
             completed_amount: 0,
-            tasks: [],
-            status: 'Pending'
+            status: 'Pending',
           });
         }
       });
 
-      const allTargets = [...targets, ...missingTargets];
-      allTargets.sort((a, b) => new Date(a.date) - new Date(b.date));
+      dailyList.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-      setDailyTargets(allTargets);
-      setFilteredTargets([...allTargets].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      // ── Compute stats from the same data — no stale-state reads ─────────────
+      const completedTarget = dailyList.reduce(
+        (sum, t) => sum + (Number(t.completed_amount) || 0),
+        0
+      );
+      const pendingTarget   = Math.max(totalTarget - completedTarget, 0);
+      const completionRate  =
+        totalTarget > 0 ? (completedTarget / totalTarget) * 100 : 0;
 
-      // Calculate total completed from daily targets
-      const totalCompleted = allTargets.reduce((sum, t) => sum + (t.completed_amount || 0), 0);
-
-      // Update statistics with completed target
-      setStatistics(prev => ({
-        ...prev,
-        completedTarget: totalCompleted,
-        pendingTarget: prev.totalTarget - totalCompleted,
-        completionRate: prev.totalTarget > 0 ? (totalCompleted / prev.totalTarget) * 100 : 0
-      }));
-
+      // ── Single synchronous state update ─────────────────────────────────────
+      setPerformanceTarget(target);
+      setDailyTargets(dailyList);
+      setFilteredTargets(
+        [...dailyList].sort((a, b) => new Date(b.date) - new Date(a.date))
+      );
+      setStatistics({ totalTarget, completedTarget, pendingTarget, completionRate });
     } catch (error) {
-      console.error('Error loading daily targets:', error);
     }
   };
 
+  // ── Inline edit handlers ────────────────────────────────────────────────────
   const startEditing = (target) => {
     setEditingTarget(target.id);
-    setEditFormData({
-      completed_amount: target.completed_amount || 0
-    });
+    setEditFormData({ completed_amount: target.completed_amount || 0 });
   };
 
   const handleEditChange = (e) => {
     const { name, value } = e.target;
-    const numValue = parseFloat(value) || 0;
-    setEditFormData(prev => ({ ...prev, [name]: numValue }));
+    setEditFormData((prev) => ({ ...prev, [name]: parseFloat(value) || 0 }));
   };
 
   const saveEdit = async (id) => {
     setLoading(true);
-
     try {
-      const currentTarget = dailyTargets.find(t => t.id === id);
-
-      console.log('TARGET ID:', id);
-      console.log('CURRENT TARGET:', currentTarget);
-
-      // 💎 1. Capture the amount cleanly
+      const currentTarget = dailyTargets.find((t) => t.id === id);
       const submittedAmount = Number(editFormData.completed_amount);
 
-      // 💎 2. Clear UI state immediately to unlock the component BEFORE awaiting network requests
+      // Clear UI immediately
       setEditingTarget(null);
       setEditFormData({});
 
-      // 3. Update daily target via API
       if (String(id).includes('-')) {
-        // CREATE (First time saving)
+        // First-time save for this date → POST
         await api.post('/api/performance/daily/', {
           employee_id: currentEmployee.employee_id,
           date: currentTarget.date,
-          completed_amount: submittedAmount
+          completed_amount: submittedAmount,
         });
       } else {
-        // UPDATE (Infinite subsequent saves)
-        // 💎 Changed to PATCH (partial update) and included the employee_id just to be safe
+        // Subsequent save → PATCH
         await api.patch(`/api/performance/daily/${id}/`, {
           employee_id: currentEmployee.employee_id,
           completed_amount: submittedAmount,
-          date: currentTarget.date
+          date: currentTarget.date,
         });
       }
 
-      // 4. Refresh data
-      await loadDailyTargets();
-      await loadPerformanceTarget();
-
+      // Reload with the single merged function
+      await loadAllData();
       alert('Daily target updated successfully!');
-
-      if (refreshData) {
-        refreshData();
-      }
+      if (refreshData) refreshData();
     } catch (error) {
       console.error('Error updating daily target:', error);
       alert(error.response?.data?.error || 'Failed to update target');
-
-      // If it fails, we should revert the UI clearing
-      setEditingTarget(id);
+      setEditingTarget(id); // revert UI on failure
     } finally {
       setLoading(false);
     }
@@ -242,47 +209,41 @@ const EmployeeDashboard = () => {
     setEditFormData({});
   };
 
-  const getProgressColor = (percentage) => {
-    if (percentage >= 75) return 'bg-green-500';
-    if (percentage >= 50) return 'bg-blue-500';
-    if (percentage >= 25) return 'bg-yellow-500';
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  const getProgressColor = (pct) => {
+    if (pct >= 75) return 'bg-green-500';
+    if (pct >= 50) return 'bg-blue-500';
+    if (pct >= 25) return 'bg-yellow-500';
     return 'bg-red-500';
   };
 
-  const formatCurrency = (amount) => {
-    if (!amount) return '₹0';
-    return `₹${amount.toLocaleString('en-IN')}`;
-  };
+  const formatCurrency = (amount) =>
+    amount ? `₹${Number(amount).toLocaleString('en-IN')}` : '₹0';
 
-  const isEditable = (date) => {
-    const today = startOfToday();
-    const targetDate = new Date(date);
-    return isSameDay(targetDate, today);
-  };
+  const isEditable = (date) => isSameDay(new Date(date), startOfToday());
 
-  const getDayName = (date) => {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return days[new Date(date).getDay()];
-  };
+  const getDayName = (date) =>
+    ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
+      new Date(date).getDay()
+    ];
 
-  if (!currentEmployee) {
-    console.log("Current Employee:", currentEmployee);
-  }
-
+  // ── Loading state ────────────────────────────────────────────────────────────
   if (!currentEmployee) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto" />
           <p className="mt-4 text-gray-600">Loading employee data...</p>
         </div>
       </div>
     );
   }
 
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="animate-fade-in pb-8">
-      {/* Profile Header */}
+
+      {/* ── Profile Header ───────────────────────────────────────────────────── */}
       <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-2xl p-6 mb-6 text-white">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -290,12 +251,22 @@ const EmployeeDashboard = () => {
               {currentEmployee.name?.charAt(0) || 'E'}
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold">{currentEmployee.name}</h1>
-              <p className="text-indigo-200 mt-1">{currentEmployee.position} • {currentEmployee.department}</p>
+              <h1 className="text-2xl md:text-3xl font-bold">
+                {currentEmployee.name}
+              </h1>
+              <p className="text-indigo-200 mt-1">
+                {currentEmployee.position} • {currentEmployee.department}
+              </p>
               <div className="flex flex-wrap gap-4 mt-2 text-sm text-indigo-200">
-                <span className="flex items-center gap-1"><FiMail size={14} /> {currentEmployee.email}</span>
-                <span className="flex items-center gap-1"><FiPhone size={14} /> {currentEmployee.phone || 'Not provided'}</span>
-                <span className="flex items-center gap-1"><FiMapPin size={14} /> {currentEmployee.work_location || 'Office'}</span>
+                <span className="flex items-center gap-1">
+                  <FiMail size={14} /> {currentEmployee.email}
+                </span>
+                <span className="flex items-center gap-1">
+                  <FiPhone size={14} /> {currentEmployee.phone || 'Not provided'}
+                </span>
+                <span className="flex items-center gap-1">
+                  <FiMapPin size={14} /> {currentEmployee.work_location || 'Office'}
+                </span>
               </div>
             </div>
           </div>
@@ -308,13 +279,15 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
-      {/* Statistics Cards */}
+      {/* ── Statistics Cards ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Total Target</p>
-              <p className="text-2xl font-bold text-indigo-600 mt-1">{formatCurrency(statistics.totalTarget)}</p>
+              <p className="text-2xl font-bold text-indigo-600 mt-1">
+                {formatCurrency(statistics.totalTarget)}
+              </p>
             </div>
             <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
               <FiTarget className="text-indigo-600 text-xl" />
@@ -326,7 +299,9 @@ const EmployeeDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Completed Target</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(statistics.completedTarget)}</p>
+              <p className="text-2xl font-bold text-green-600 mt-1">
+                {formatCurrency(statistics.completedTarget)}
+              </p>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
               <FiCheckCircle className="text-green-600 text-xl" />
@@ -338,7 +313,9 @@ const EmployeeDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Pending Target</p>
-              <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(statistics.pendingTarget)}</p>
+              <p className="text-2xl font-bold text-orange-600 mt-1">
+                {formatCurrency(statistics.pendingTarget)}
+              </p>
             </div>
             <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
               <FiClock className="text-orange-600 text-xl" />
@@ -350,7 +327,9 @@ const EmployeeDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Completion Rate</p>
-              <p className="text-2xl font-bold text-purple-600 mt-1">{statistics.completionRate.toFixed(1)}%</p>
+              <p className="text-2xl font-bold text-purple-600 mt-1">
+                {statistics.completionRate.toFixed(1)}%
+              </p>
             </div>
             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
               <FiTrendingUp className="text-purple-600 text-xl" />
@@ -359,7 +338,7 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
-      {/* Month Selector */}
+      {/* ── Month Selector ───────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -369,31 +348,34 @@ const EmployeeDashboard = () => {
           <div className="flex gap-2">
             <button
               onClick={() => {
-                const newMonth = new Date(currentMonth);
-                newMonth.setMonth(newMonth.getMonth() - 1);
-                setCurrentMonth(newMonth);
-                setSelectedMonth(format(newMonth, 'yyyy-MM'));
+                const d = new Date(currentMonth);
+                d.setMonth(d.getMonth() - 1);
+                setCurrentMonth(d);
+                setSelectedMonth(format(d, 'yyyy-MM'));
               }}
               className="p-2 hover:bg-gray-100 rounded-lg transition"
             >
               <FiChevronLeft size={18} />
             </button>
+
             <span className="px-4 py-2 bg-gray-100 rounded-lg text-sm font-medium">
               {format(currentMonth, 'MMMM yyyy')}
             </span>
+
             {format(currentMonth, 'yyyy-MM') < format(new Date(), 'yyyy-MM') && (
               <button
                 onClick={() => {
-                  const newMonth = new Date(currentMonth);
-                  newMonth.setMonth(newMonth.getMonth() + 1);
-                  setCurrentMonth(newMonth);
-                  setSelectedMonth(format(newMonth, 'yyyy-MM'));
+                  const d = new Date(currentMonth);
+                  d.setMonth(d.getMonth() + 1);
+                  setCurrentMonth(d);
+                  setSelectedMonth(format(d, 'yyyy-MM'));
                 }}
                 className="p-2 hover:bg-gray-100 rounded-lg transition"
               >
                 <FiChevronRight size={18} />
               </button>
             )}
+
             <button
               onClick={() => {
                 const today = new Date();
@@ -408,34 +390,44 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
-      {/* Daily Targets Table */}
+      {/* ── Daily Targets Table ──────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-800">Daily Targets</h3>
           <p className="text-sm text-gray-500 mt-1">Track your daily performance</p>
-          <p className="text-xs text-amber-600 mt-1">⚠️ You can only edit today's date. Past dates are read-only.</p>
+          <p className="text-xs text-amber-600 mt-1">
+            ⚠️ You can only edit today's date. Past dates are read-only.
+          </p>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Date</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Completed Amount</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Action</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
+                  Date
+                </th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
+                  Completed Amount
+                </th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
+                  Status
+                </th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredTargets.length > 0 ? (
                 filteredTargets.map((target) => {
                   const targetDate = new Date(target.date);
-                  const isToday = isEditable(target.date);
-                  const dayName = getDayName(target.date);
-                  const progress = statistics.totalTarget > 0 ? (target.completed_amount / statistics.totalTarget) * 100 : 0;
+                  const isToday   = isEditable(target.date);
+                  const dayName   = getDayName(target.date);
 
                   return (
                     <tr key={target.id} className="hover:bg-gray-50 transition">
+                      {/* Date */}
                       <td className="px-4 py-3">
                         <div>
                           <span className="text-sm font-medium text-gray-800">
@@ -446,6 +438,8 @@ const EmployeeDashboard = () => {
                           </span>
                         </div>
                       </td>
+
+                      {/* Completed Amount */}
                       <td className="px-4 py-3 text-center">
                         {editingTarget === target.id && isToday ? (
                           <input
@@ -463,6 +457,8 @@ const EmployeeDashboard = () => {
                           </span>
                         )}
                       </td>
+
+                      {/* Status */}
                       <td className="px-4 py-3 text-center">
                         {target.completed_amount > 0 ? (
                           <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
@@ -474,6 +470,8 @@ const EmployeeDashboard = () => {
                           </span>
                         )}
                       </td>
+
+                      {/* Action */}
                       <td className="px-4 py-3 text-center">
                         {editingTarget === target.id ? (
                           <div className="flex items-center justify-center gap-2">
@@ -511,10 +509,10 @@ const EmployeeDashboard = () => {
               ) : (
                 <tr>
                   <td colSpan="4" className="text-center py-12">
-                    <div className="text-center">
-                      <FiTarget className="mx-auto text-gray-400 text-5xl mb-3" />
-                      <p className="text-gray-500">No daily targets found for {format(currentMonth, 'MMMM yyyy')}</p>
-                    </div>
+                    <FiTarget className="mx-auto text-gray-400 text-5xl mb-3" />
+                    <p className="text-gray-500">
+                      No daily targets found for {format(currentMonth, 'MMMM yyyy')}
+                    </p>
                   </td>
                 </tr>
               )}
@@ -523,53 +521,70 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
-      {/* Progress Summary */}
+      {/* ── Monthly Progress Summary ─────────────────────────────────────────── */}
       {statistics.totalTarget > 0 && (
         <div className="mt-6 p-6 bg-gray-50 rounded-2xl border border-gray-100">
-          <h4 className="font-semibold text-gray-800 mb-3">Monthly Progress Summary</h4>
+          <h4 className="font-semibold text-gray-800 mb-3">
+            Monthly Progress Summary
+          </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-gray-600">Overall Progress</span>
-                <span className="font-medium">{statistics.completionRate.toFixed(1)}%</span>
+                <span className="font-medium">
+                  {statistics.completionRate.toFixed(1)}%
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3">
                 <div
                   className={`${getProgressColor(statistics.completionRate)} h-3 rounded-full transition-all duration-500`}
-                  style={{ width: `${Math.min(statistics.completionRate, 100)}%` }}
-                ></div>
+                  style={{
+                    width: `${Math.min(statistics.completionRate, 100)}%`,
+                  }}
+                />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3 text-center">
               <div>
                 <p className="text-xs text-gray-500">Target</p>
-                <p className="text-sm font-semibold text-gray-800">{formatCurrency(statistics.totalTarget)}</p>
+                <p className="text-sm font-semibold text-gray-800">
+                  {formatCurrency(statistics.totalTarget)}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Completed</p>
-                <p className="text-sm font-semibold text-green-600">{formatCurrency(statistics.completedTarget)}</p>
+                <p className="text-sm font-semibold text-green-600">
+                  {formatCurrency(statistics.completedTarget)}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Pending</p>
-                <p className="text-sm font-semibold text-orange-600">{formatCurrency(statistics.pendingTarget)}</p>
+                <p className="text-sm font-semibold text-orange-600">
+                  {formatCurrency(statistics.pendingTarget)}
+                </p>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Info Card */}
+      {/* ── Info Card ────────────────────────────────────────────────────────── */}
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
             <FiActivity className="text-blue-600" />
           </div>
           <div>
-            <h4 className="font-medium text-blue-800">How Daily Targets Work</h4>
+            <h4 className="font-medium text-blue-800">
+              How Daily Targets Work
+            </h4>
             <p className="text-sm text-blue-700 mt-1">
-              • You can only edit today's date. Past dates are locked.<br />
-              • Enter the amount achieved for today.<br />
-              • Your progress automatically syncs with your performance dashboard.
+              • You can only edit today's date. Past dates are locked.
+              <br />
+              • Enter the amount achieved for today.
+              <br />
+              • Your progress automatically syncs with your performance
+              dashboard.
             </p>
           </div>
         </div>

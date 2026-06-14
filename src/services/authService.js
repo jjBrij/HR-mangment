@@ -112,6 +112,5 @@ export const getCurrentUserProfile = async () => {
 export const initializeAuth = () => {
   const token = getAccessToken();
   const user = getCurrentUser();
-  console.log('Auth initialized:', { hasToken: !!token, hasUser: !!user });
   return { token, user };
 };

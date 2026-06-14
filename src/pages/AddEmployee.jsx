@@ -338,7 +338,6 @@ const AddEmployee = () => {
         },
       });
       
-      console.log('Employee created successfully:', response.data);
       
       // Refresh dashboard data
       refreshData();

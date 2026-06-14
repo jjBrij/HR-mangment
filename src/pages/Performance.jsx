@@ -168,7 +168,6 @@ const Performance = () => {
         ? allTargetsRes
         : (allTargetsRes.results || []);
 
-      console.log('Raw API response - count:', rawAll.length);
 
       const enriched = rawAll.map((target, idx) => {
         const employee = validEmployees.find(
@@ -528,7 +527,7 @@ const Performance = () => {
     const employeeId = target.employee_id;
     const month = target.month;
 
-    console.log('Delete Target:', { employeeId, month, target });
+
 
     if (!employeeId || !month) {
       console.error('Cannot delete: Missing employee_id or month');
