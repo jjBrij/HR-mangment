@@ -16,6 +16,8 @@ import Attendance from './pages/Attendance';
 import Performance from './pages/Performance';
 import Payroll from './pages/Payroll';
 import Leave from './pages/Leave';
+import ResetPassword from './pages/ResetPassword';
+
 import Settings from './pages/Settings';
 import { initializeData } from './services/dataService';
 import { initializeAuth, getCurrentUser } from './services/authService';
@@ -48,6 +50,8 @@ function AppContent() {
       {/* ── Public ──────────────────────────────────────────────────────── */}
       <Route path="/login"           element={<Login />} />
       <Route path="/change-password" element={<ChangePassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+
 
       {/* ── Root → smart role redirect ───────────────────────────────────── */}
       <Route path="/" element={
